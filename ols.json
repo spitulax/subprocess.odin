@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/DanielGavin/ols/master/misc/ols.schema.json",
+  "thread_pool_count": 2,
+  "enable_semantic_tokens": true,
+  "enable_document_symbols": false,
+  "enable_format": true,
+  "enable_hover": true,
+  "enable_procedure_context": true,
+  "enable_snippets": true,
+  "enable_inlay_hints": false,
+  "enable_references": true,
+  "enable_fake_methods": true,
+  "enable_procedure_snippet": true,
+  "enable_checker_only_saved": false,
+  "disable_parser_errors": false,
+  "verbose": true,
+  "checker_args": "-vet -disallow-do -warnings-as-errors -no-entry-point",
+
+  "profile": "default",
+  "profiles": [
+    { "name": "default", "os": "linux", "checker_path": ["./."] }
+  ]
+}
