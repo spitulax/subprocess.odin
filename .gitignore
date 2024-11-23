@@ -4,3 +4,4 @@ result
 test
 test.odin
 *.bin
+*.o

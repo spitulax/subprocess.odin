@@ -49,7 +49,7 @@ _process_wait :: proc(
         status: i32
         child_pid := posix.waitpid(self.pid, &status, {})
         if child_pid == FAIL {
-            err = Process_Cannot_Exit{child_pid, posix.errno()}
+            err = General_Error(Process_Cannot_Exit{child_pid, posix.errno()})
         }
         result.duration = time.since(self.execution_time)
 
@@ -88,7 +88,7 @@ _process_wait :: proc(
 
             if g_process_tracker_initialised {
                 if !(child_appended && sync.atomic_load(&current.has_run)) {     // short-circuit evaluation
-                    err = Process_Not_Executed{self.pid}
+                    err = General_Error(Program_Not_Executed{self.pid, self.executable_name})
                 }
                 if child_appended {
                     if sync.mutex_guard(g_process_tracker_mutex) {
@@ -116,7 +116,7 @@ _process_wait :: proc(
 
 
 _run_prog_async_unchecked :: proc(
-    prog: string,
+    prog: $string,
     args: []string,
     option: Run_Prog_Option = .Share,
     loc: Loc,
@@ -159,13 +159,16 @@ _run_prog_async_unchecked :: proc(
 
     child_pid := posix.fork()
     if child_pid == FAIL {
-        err = Spawn_Failed{posix.errno()}
+        err = General_Error(Spawn_Failed{posix.errno()})
         return
     }
 
     if child_pid == 0 {
-        fail :: proc() {
-            posix.exit(1)
+        wrap :: proc(err: Error, loc: Loc) {
+            if err != nil {
+                log_fatal(strerror(err), loc = loc)
+                posix.exit(1)
+            }
         }
 
         pid := posix.getpid()
@@ -205,21 +208,21 @@ _run_prog_async_unchecked :: proc(
         case .Share:
             break
         case .Silent:
-            if fd_redirect(dev_null, posix.STDOUT_FILENO, loc) != nil {fail()}
-            if fd_redirect(dev_null, posix.STDERR_FILENO, loc) != nil {fail()}
-            if fd_redirect(dev_null, posix.STDIN_FILENO, loc) != nil {fail()}
-            if fd_close(dev_null, loc) != nil {fail()}
+            wrap(fd_redirect(dev_null, posix.STDOUT_FILENO, loc), loc)
+            wrap(fd_redirect(dev_null, posix.STDERR_FILENO, loc), loc)
+            wrap(fd_redirect(dev_null, posix.STDIN_FILENO, loc), loc)
+            wrap(fd_close(dev_null, loc), loc)
         case .Capture:
-            if pipe_close_read(&stdout_pipe, loc) != nil {fail()}
-            if pipe_close_read(&stderr_pipe, loc) != nil {fail()}
+            wrap(pipe_close_read(&stdout_pipe, loc), loc)
+            wrap(pipe_close_read(&stderr_pipe, loc), loc)
 
-            if pipe_redirect(&stdout_pipe, posix.STDOUT_FILENO, loc) != nil {fail()}
-            if pipe_redirect(&stderr_pipe, posix.STDERR_FILENO, loc) != nil {fail()}
-            if fd_redirect(dev_null, posix.STDIN_FILENO, loc) != nil {fail()}
+            wrap(pipe_redirect(&stdout_pipe, posix.STDOUT_FILENO, loc), loc)
+            wrap(pipe_redirect(&stderr_pipe, posix.STDERR_FILENO, loc), loc)
+            wrap(fd_redirect(dev_null, posix.STDIN_FILENO, loc), loc)
 
-            if pipe_close_write(&stdout_pipe, loc) != nil {fail()}
-            if pipe_close_write(&stderr_pipe, loc) != nil {fail()}
-            if fd_close(dev_null, loc) != nil {fail()}
+            wrap(pipe_close_write(&stdout_pipe, loc), loc)
+            wrap(pipe_close_write(&stderr_pipe, loc), loc)
+            wrap(fd_close(dev_null, loc), loc)
         }
 
         if g_process_tracker_initialised {
@@ -231,8 +234,7 @@ _run_prog_async_unchecked :: proc(
                 _, exch_ok := sync.atomic_compare_exchange_strong(&current.has_run, true, false)
                 assert(exch_ok)
             }
-            log_errorf("Failed to run `%s`: %s", prog, posix.strerror(posix.errno()), loc = loc)
-            fail()
+            wrap(General_Error(Program_Execution_Failed{posix.errno(), prog}), loc)
         }
         unreachable()
     }
@@ -245,9 +247,10 @@ _run_prog_async_unchecked :: proc(
     delete(argv, loc = loc)
     maybe_stdout_pipe: Maybe(Pipe) = (option == .Capture) ? stdout_pipe : nil
     maybe_stderr_pipe: Maybe(Pipe) = (option == .Capture) ? stderr_pipe : nil
-    return {
+    return Process {
             pid = child_pid,
             execution_time = execution_time,
+            executable_name = prog,
             stdout_pipe = maybe_stdout_pipe,
             stderr_pipe = maybe_stderr_pipe,
         },

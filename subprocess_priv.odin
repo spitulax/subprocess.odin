@@ -36,6 +36,23 @@ Process_Status :: struct {
 }
 
 
+general_strerror :: proc(err: General_Error, alloc := context.allocator) -> string {
+    context.allocator = alloc
+    switch v in err {
+    case Program_Not_Found:
+        return fmt.aprintf("Cannot find `%v`", v.name)
+    case Process_Cannot_Exit:
+        return fmt.aprintf("Process %v cannot exit: %s", v.handle, strerrno(v.errno))
+    case Program_Not_Executed:
+        return fmt.aprintf("Process %v did not execute `%s` successfully", v.handle, v.name)
+    case Program_Execution_Failed:
+        return fmt.aprintf("Failed to run `%s`: %s", v.name, strerrno(v.errno))
+    case Spawn_Failed:
+        return fmt.aprintf("Failed to spawn child process: %s", strerrno(v.errno))
+    }
+    unreachable()
+}
+
 log_header :: proc(
     sb: ^strings.Builder,
     level: log.Level,
@@ -213,7 +230,7 @@ create_process_logger :: proc(
 
     // NOTE: I only intend to allocate this to the shared arena for now
     data := new(Process_Logger_Data, alloc)
-    data^ = {
+    data^ = Process_Logger_Data {
         builder = builder,
         mutex   = mutex,
     }

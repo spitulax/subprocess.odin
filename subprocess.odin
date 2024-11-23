@@ -1,7 +1,6 @@
 package subprocess
 
 import "base:runtime"
-import "core:fmt"
 import "core:log"
 import "core:time"
 
@@ -20,22 +19,27 @@ Flags :: enum {
 Flags_Set :: bit_set[Flags]
 
 
-Error :: union {
-    // `program_check`, `run_prog_*_checked`
-    Program_Not_Found,
-
-    // `process_wait*`
-    Process_Cannot_Exit,
-    Process_Not_Executed,
-
-    // `run_prog*`
-    Spawn_Failed,
+Error :: union #shared_nil {
+    General_Error,
 
     // `process_tracker_init*`
     Process_Tracker_Error,
 
     // Target specific stuff
     Internal_Error,
+}
+
+General_Error :: union {
+    // `program_check`, `run_prog_*_checked`
+    Program_Not_Found,
+
+    // `process_wait*`
+    Process_Cannot_Exit,
+    Program_Not_Executed,
+    Program_Execution_Failed,
+
+    // `run_prog*`
+    Spawn_Failed,
 }
 
 Program_Not_Found :: struct {
@@ -47,8 +51,14 @@ Process_Cannot_Exit :: struct {
     errno:  Errno,
 }
 
-Process_Not_Executed :: struct {
+Program_Not_Executed :: struct {
     handle: Process_Handle,
+    name:   string,
+}
+
+Program_Execution_Failed :: struct {
+    errno: Errno,
+    name:  string,
 }
 
 Spawn_Failed :: struct {
@@ -62,14 +72,8 @@ Internal_Error :: _Internal_Error
 strerror :: proc(err: Error, alloc := context.allocator) -> string {
     context.allocator = alloc
     switch v in err {
-    case Program_Not_Found:
-        return fmt.aprintf("Cannot find `%v`", v.name)
-    case Process_Cannot_Exit:
-        return fmt.aprintf("Process %v cannot exit: %s", v.handle, strerrno(v.errno))
-    case Process_Not_Executed:
-        return fmt.aprintf("Process %v did not execute the command successfully", v.handle)
-    case Spawn_Failed:
-        return fmt.aprintf("Failed to spawn child process: %s", strerrno(v.errno))
+    case General_Error:
+        return general_strerror(v)
     case Process_Tracker_Error:
         return process_tracker_strerror(v)
     case Internal_Error:
@@ -130,8 +134,9 @@ Process_Exit :: _Process_Exit
 Process_Handle :: _Process_Handle
 
 Process :: struct {
-    using _impl:    _Process,
-    execution_time: time.Time,
+    using _impl:     _Process,
+    execution_time:  time.Time,
+    executable_name: string,
 }
 
 process_handle :: proc(self: Process) -> Process_Handle {
@@ -239,7 +244,7 @@ run_prog_async_checked :: proc(
     err: Error,
 ) {
     if !prog.found {
-        err = Program_Not_Found{prog.name}
+        err = General_Error(Program_Not_Found{prog.name})
         return
     }
     return _run_prog_async_unchecked(prog.name, args, option, loc)
@@ -271,7 +276,7 @@ run_prog_sync_checked :: proc(
     err: Error,
 ) {
     if !prog.found {
-        err = Program_Not_Found{prog.name}
+        err = General_Error(Program_Not_Found{prog.name})
         return
     }
     process := run_prog_async_unchecked(prog.name, args, option, loc) or_return
@@ -312,7 +317,13 @@ program :: proc($name: string, loc := #caller_location) -> Program {
 }
 
 @(require_results)
-program_check :: proc($name: string, loc := #caller_location) -> (prog: Program, err: Error) {
+program_check :: proc(
+    $name: string,
+    loc := #caller_location,
+) -> (
+    prog: Program,
+    err: General_Error,
+) {
     flags_temp := g_flags
     disable_default_flags({.Echo_Commands, .Echo_Commands_Debug})
     found := _program(name, loc)
