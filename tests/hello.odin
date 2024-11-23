@@ -12,24 +12,22 @@ hello :: proc(t: ^testing.T) {
 
     result: lib.Process_Result
     result, err = lib.run_prog_sync(sh, {"-c", "echo 'Hello, World!'"}, .Share)
-    wrap_error(t, err)
+    wrap(t, err)
     if err == nil {
         assert(result.exit == nil && len(result.stdout) == 0 && len(result.stderr) == 0)
     }
     lib.process_result_destroy(&result)
 
     result, err = lib.run_prog_sync(sh, {"-c", "echo 'Hello, World!'"}, .Capture)
-    wrap_error(t, err)
+    wrap(t, err)
     if err == nil {
         assert(result.exit == nil && len(result.stderr) == 0)
     }
-    if !testing.expect_value(t, result.stdout, "Hello, World!\n") {
-        testing.fail(t)
-    }
+    wrap(t, testing.expect_value(t, result.stdout, "Hello, World!\n"))
     lib.process_result_destroy(&result)
 
     result, err = lib.run_prog_sync(sh, {"-c", "echo 'Hello, World!'"}, .Silent)
-    wrap_error(t, err)
+    wrap(t, err)
     if err == nil {
         assert(result.exit == nil && len(result.stdout) == 0 && len(result.stderr) == 0)
     }
