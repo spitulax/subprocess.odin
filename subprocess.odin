@@ -19,6 +19,65 @@ Flags :: enum {
 Flags_Set :: bit_set[Flags]
 
 
+Error :: union {
+    // `program_check`, `run_prog_*_checked`
+    Program_Not_Found,
+
+    // `process_wait*`
+    Process_Cannot_Exit,
+    Process_Not_Executed,
+
+    // `run_prog*`
+    Spawn_Failed,
+
+    // `process_tracker_init*`
+    Process_Tracker_Error,
+
+    // Target specific stuff
+    Internal_Error,
+}
+
+Program_Not_Found :: struct {
+    name: string,
+}
+
+Process_Cannot_Exit :: struct {
+    handle: Process_Handle,
+    errno:  Errno,
+}
+
+Process_Not_Executed :: struct {
+    handle: Process_Handle,
+}
+
+Spawn_Failed :: struct {
+    errno: Errno,
+}
+
+Process_Tracker_Error :: _Process_Tracker_Error
+
+Internal_Error :: _Internal_Error
+
+strerror :: proc(err: Error, alloc := context.allocator) -> string {
+    context.allocator = alloc
+    switch v in err {
+    case Program_Not_Found:
+        return fmt.aprintf("Cannot find `%v`", v.name)
+    case Process_Cannot_Exit:
+        return fmt.aprintf("Process %v cannot exit: %s", v.handle, strerrno(v.errno))
+    case Process_Not_Executed:
+        return fmt.aprintf("Process %v did not execute the command successfully", v.handle)
+    case Spawn_Failed:
+        return fmt.aprintf("Failed to spawn child process: %s", strerrno(v.errno))
+    case Process_Tracker_Error:
+        return process_tracker_strerror(v)
+    case Internal_Error:
+        return internal_strerror(v)
+    }
+    unreachable()
+}
+
+
 create_logger :: proc() -> log.Logger {
     logger_proc :: proc(
         logger_data: rawptr,
@@ -84,10 +143,10 @@ process_wait :: proc(
     loc := #caller_location,
 ) -> (
     result: Process_Result,
-    ok: bool,
+    err: Error,
 ) {
     log: Maybe(string)
-    result, log, ok = _process_wait(self, allocator, loc)
+    result, log, err = _process_wait(self, allocator, loc)
     if log != nil {
         log_infof("Log from %v:\n%s", self.pid, log.?, loc = loc)
     }
@@ -96,13 +155,26 @@ process_wait :: proc(
 
 process_wait_many :: proc(
     selves: []Process,
-    allocator := context.allocator,
+    alloc := context.allocator,
     loc := #caller_location,
 ) -> (
     results: []Process_Result,
+    errs: []Error,
     ok: bool,
 ) {
-    return _process_wait_many(selves, allocator, loc)
+    ok = true
+    defer if !ok {
+        results = nil
+    }
+    results = make([]Process_Result, len(selves), alloc, loc)
+    errs = make([]Error, len(selves), alloc, loc)
+    for process, i in selves {
+        process_result, process_err := process_wait(process, alloc, loc)
+        ok &&= (process_err != nil)
+        results[i] = process_result
+        errs[i] = process_err
+    }
+    return
 }
 
 
@@ -114,11 +186,15 @@ Process_Result :: struct {
 }
 
 process_result_destroy :: proc(self: ^Process_Result, loc := #caller_location) {
-    _process_result_destroy(self, loc)
+    delete(self.stdout, loc = loc)
+    delete(self.stderr, loc = loc)
+    self^ = {}
 }
 
 process_result_destroy_many :: proc(selves: []Process_Result, loc := #caller_location) {
-    _process_result_destroy_many(selves, loc)
+    for &result in selves {
+        process_result_destroy(&result, loc)
+    }
 }
 
 
@@ -146,7 +222,7 @@ run_prog_async_unchecked :: proc(
     loc := #caller_location,
 ) -> (
     process: Process,
-    ok: bool,
+    err: Error,
 ) {
     return _run_prog_async_unchecked(prog, args, option, loc)
 }
@@ -156,14 +232,14 @@ run_prog_async_checked :: proc(
     prog: Program,
     args: []string = nil,
     option: Run_Prog_Option = .Share,
-    require: bool = true,
     loc := #caller_location,
 ) -> (
     process: Process,
-    ok: bool,
+    err: Error,
 ) {
-    if !check_program(prog, require, loc) {
-        return {}, !require
+    if !prog.found {
+        err = Program_Not_Found{prog.name}
+        return
     }
     return _run_prog_async_unchecked(prog.name, args, option, loc)
 }
@@ -176,7 +252,7 @@ run_prog_sync_unchecked :: proc(
     loc := #caller_location,
 ) -> (
     result: Process_Result,
-    ok: bool,
+    err: Error,
 ) {
     process := run_prog_async_unchecked(prog, args, option, loc) or_return
     return process_wait(process, allocator, loc)
@@ -188,14 +264,14 @@ run_prog_sync_checked :: proc(
     args: []string = nil,
     option: Run_Prog_Option = .Share,
     allocator := context.allocator,
-    require: bool = true,
     loc := #caller_location,
 ) -> (
     result: Process_Result,
-    ok: bool,
+    err: Error,
 ) {
-    if !check_program(prog, require, loc) {
-        return {}, !require
+    if !prog.found {
+        err = Program_Not_Found{prog.name}
+        return
     }
     process := run_prog_async_unchecked(prog.name, args, option, loc) or_return
     return process_wait(process, allocator, loc)
@@ -203,21 +279,21 @@ run_prog_sync_checked :: proc(
 
 
 // DOCS: tell the user to manually init and destroy process tracker if they want to store process log
-process_tracker_init :: proc() -> (ok: bool) {
+process_tracker_init :: proc() -> (err: Process_Tracker_Error) {
     if g_process_tracker_initialised {
         return
     }
-    ok = _process_tracker_init()
-    g_process_tracker_initialised = ok
+    err = _process_tracker_init()
+    g_process_tracker_initialised = err == nil
     return
 }
 
-process_tracker_destroy :: proc() -> (ok: bool) {
+process_tracker_destroy :: proc() -> (err: Process_Tracker_Error) {
     if !g_process_tracker_initialised {
         return
     }
-    ok = _process_tracker_destroy()
-    g_process_tracker_initialised = !ok
+    err = _process_tracker_destroy()
+    g_process_tracker_initialised = err != nil
     return
 }
 
@@ -228,49 +304,22 @@ Program :: struct {
     //full_path: string, // would require allocation
 }
 
-// DOCS: `ok` is always true if not `required`
 @(require_results)
-program :: proc(
-    $name: string,
-    required: bool = false,
-    loc := #caller_location,
-) -> (
-    prog: Program,
-    ok: bool,
-) #optional_ok {
+program :: proc($name: string, loc := #caller_location) -> Program {
+    prog, _ := program_check(name, loc)
+    return prog
+}
+
+@(require_results)
+program_check :: proc($name: string, loc := #caller_location) -> (prog: Program, err: Error) {
     flags_temp := g_flags
     disable_default_flags({.Echo_Commands})
     found := _program(name, loc)
     g_flags = flags_temp
     if !found {
-        msg :: "Failed to find `" + name + "`"
-        if required {
-            log_error(msg, loc = loc)
-        } else {
-            log_warn(msg, loc = loc)
-        }
+        err = Program_Not_Found{name}
     }
-    return {name = name, found = found}, !(required && !found)
-}
-
-@(require_results)
-check_program :: proc(
-    prog: Program,
-    require: bool = true,
-    loc := #caller_location,
-) -> (
-    found: bool,
-) {
-    if !prog.found {
-        msg := fmt.tprintf("`%v` does not exist", prog.name)
-        if require {
-            log_error(msg, loc = loc)
-        } else {
-            log_warn(msg, loc = loc)
-        }
-        return
-    }
-    return true
+    return {name = name, found = found}, err
 }
 
 

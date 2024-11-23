@@ -8,6 +8,7 @@ import "core:io"
 import "core:log"
 import "core:mem"
 import "core:mem/virtual"
+import "core:os"
 import "core:strings"
 import "core:sync"
 
@@ -47,7 +48,7 @@ log_header :: proc(
         color: string
         switch level {
         case .Debug:
-            color = ansi.FG_BLUE
+            color = ansi.FG_BRIGHT_BLACK
         case .Warning:
             color = ansi.FG_YELLOW
         case .Fatal, .Error:
@@ -88,14 +89,20 @@ _log :: proc(level: log.Level, str: string, loc: Loc) {
 
 // Prevent infinite recursion if `context.logger` is from `create_logger()`
 _log_no_flag :: proc(level: log.Level, str: string, loc: Loc) {
-    sb_loc := strings.builder_make()
-    defer strings.builder_destroy(&sb_loc)
-    log_header(&sb_loc, level, true, loc)
-    fmt.sbprintf(&sb_loc, str)
+    sb := strings.builder_make()
+    defer strings.builder_destroy(&sb)
+    log_header(&sb, level, true, loc)
+    if level <= log.Level.Debug {
+        ansi_graphic(strings.to_writer(&sb), ansi.FG_BRIGHT_BLACK)
+    }
+    fmt.sbprintf(&sb, str)
+    if level <= log.Level.Debug {
+        ansi_reset(strings.to_writer(&sb))
+    }
     if level >= log.Level.Warning {
-        fmt.eprintln(strings.to_string(sb_loc))
+        fmt.eprintln(strings.to_string(sb))
     } else {
-        fmt.println(strings.to_string(sb_loc))
+        fmt.println(strings.to_string(sb))
     }
 }
 

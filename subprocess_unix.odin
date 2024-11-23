@@ -14,6 +14,7 @@ import "core:time"
 
 
 FAIL :: -1
+Errno :: posix.Errno
 
 
 _Exit :: distinct u32
@@ -42,15 +43,13 @@ _process_wait :: proc(
 ) -> (
     result: Process_Result,
     log: Maybe(string),
-    ok: bool,
+    err: Error,
 ) {
     for {
         status: i32
-        early_exit: bool
         child_pid := posix.waitpid(self.pid, &status, {})
         if child_pid == FAIL {
-            log_errorf("Process %v cannot exit: %s", child_pid, strerror(), loc = loc)
-            early_exit = true
+            err = Process_Cannot_Exit{child_pid, posix.errno()}
         }
         result.duration = time.since(self.execution_time)
 
@@ -89,12 +88,7 @@ _process_wait :: proc(
 
             if g_process_tracker_initialised {
                 if !(child_appended && sync.atomic_load(&current.has_run)) {     // short-circuit evaluation
-                    early_exit = true
-                    log_errorf(
-                        "Process %v did not execute the command successfully",
-                        self.pid,
-                        loc = loc,
-                    )
+                    err = Process_Not_Executed{self.pid}
                 }
                 if child_appended {
                     if sync.mutex_guard(g_process_tracker_mutex) {
@@ -110,49 +104,13 @@ _process_wait :: proc(
         if posix.WIFEXITED(status) {
             exit_code := posix.WEXITSTATUS(status)
             result.exit = (exit_code == 0) ? nil : Exit(exit_code)
-            ok = true && !early_exit
             return
         }
 
         if posix.WIFSIGNALED(status) {
             result.exit = Signal(posix.WTERMSIG(status))
-            ok = true && !early_exit
             return
         }
-    }
-}
-
-_process_wait_many :: proc(
-    selves: []Process,
-    alloc: Alloc,
-    loc: Loc,
-) -> (
-    results: []Process_Result,
-    ok: bool,
-) {
-    ok = true
-    defer if !ok {
-        results = nil
-    }
-    results = make([]Process_Result, len(selves), alloc, loc)
-    for process, i in selves {
-        process_result, process_ok := process_wait(process, alloc, loc)
-        ok &&= process_ok
-        results[i] = process_result
-    }
-    return
-}
-
-
-_process_result_destroy :: proc(self: ^Process_Result, loc: Loc) {
-    delete(self.stdout, loc = loc)
-    delete(self.stderr, loc = loc)
-    self^ = {}
-}
-
-_process_result_destroy_many :: proc(selves: []Process_Result, loc: Loc) {
-    for &result in selves {
-        process_result_destroy(&result, loc)
     }
 }
 
@@ -164,7 +122,7 @@ _run_prog_async_unchecked :: proc(
     loc: Loc,
 ) -> (
     process: Process,
-    ok: bool,
+    err: Error,
 ) {
     stdout_pipe, stderr_pipe: Pipe
     dev_null: posix.FD
@@ -197,7 +155,7 @@ _run_prog_async_unchecked :: proc(
 
     child_pid := posix.fork()
     if child_pid == FAIL {
-        log_errorf("Failed to fork child process: %s", strerror(), loc = loc)
+        err = Spawn_Failed{posix.errno()}
         return
     }
 
@@ -238,25 +196,26 @@ _run_prog_async_unchecked :: proc(
         context.logger = logger
         enable_default_flags({.Use_Context_Logger})
 
+        // TODO: how to handle errors the new way here?
         switch option {
         case .Share:
             break
         case .Silent:
-            if !fd_redirect(dev_null, posix.STDOUT_FILENO, loc) {fail()}
-            if !fd_redirect(dev_null, posix.STDERR_FILENO, loc) {fail()}
-            if !fd_redirect(dev_null, posix.STDIN_FILENO, loc) {fail()}
-            if !fd_close(dev_null, loc) {fail()}
+            if fd_redirect(dev_null, posix.STDOUT_FILENO, loc) != nil {fail()}
+            if fd_redirect(dev_null, posix.STDERR_FILENO, loc) != nil {fail()}
+            if fd_redirect(dev_null, posix.STDIN_FILENO, loc) != nil {fail()}
+            if fd_close(dev_null, loc) != nil {fail()}
         case .Capture:
-            if !pipe_close_read(&stdout_pipe, loc) {fail()}
-            if !pipe_close_read(&stderr_pipe, loc) {fail()}
+            if pipe_close_read(&stdout_pipe, loc) != nil {fail()}
+            if pipe_close_read(&stderr_pipe, loc) != nil {fail()}
 
-            if !pipe_redirect(&stdout_pipe, posix.STDOUT_FILENO, loc) {fail()}
-            if !pipe_redirect(&stderr_pipe, posix.STDERR_FILENO, loc) {fail()}
-            if !fd_redirect(dev_null, posix.STDIN_FILENO, loc) {fail()}
+            if pipe_redirect(&stdout_pipe, posix.STDOUT_FILENO, loc) != nil {fail()}
+            if pipe_redirect(&stderr_pipe, posix.STDERR_FILENO, loc) != nil {fail()}
+            if fd_redirect(dev_null, posix.STDIN_FILENO, loc) != nil {fail()}
 
-            if !pipe_close_write(&stdout_pipe, loc) {fail()}
-            if !pipe_close_write(&stderr_pipe, loc) {fail()}
-            if !fd_close(dev_null, loc) {fail()}
+            if pipe_close_write(&stdout_pipe, loc) != nil {fail()}
+            if pipe_close_write(&stderr_pipe, loc) != nil {fail()}
+            if fd_close(dev_null, loc) != nil {fail()}
         }
 
         if g_process_tracker_initialised {
@@ -268,7 +227,7 @@ _run_prog_async_unchecked :: proc(
                 _, exch_ok := sync.atomic_compare_exchange_strong(&current.has_run, true, false)
                 assert(exch_ok)
             }
-            log_errorf("Failed to run `%s`: %s", prog, strerror(), loc = loc)
+            log_errorf("Failed to run `%s`: %s", prog, posix.strerror(posix.errno()), loc = loc)
             fail()
         }
         unreachable()
@@ -288,12 +247,46 @@ _run_prog_async_unchecked :: proc(
             stdout_pipe = maybe_stdout_pipe,
             stderr_pipe = maybe_stderr_pipe,
         },
-        true
+        err
 }
 
 
+_Process_Tracker_Error :: union {
+    Mmap_Failed,
+    Unmap_Failed,
+    Arena_Init_Failed,
+}
+
+Mmap_Failed :: struct {
+    errno: Errno,
+}
+
+Unmap_Failed :: struct {
+    errno: Errno,
+}
+
+Arena_Init_Failed :: struct {
+    err: mem.Allocator_Error,
+}
+
+process_tracker_strerror :: proc(
+    err: _Process_Tracker_Error,
+    alloc := context.allocator,
+) -> string {
+    context.allocator = alloc
+    switch v in err {
+    case Mmap_Failed:
+        return fmt.aprintf("Failed to map shared memory: %s", strerrno(v.errno))
+    case Unmap_Failed:
+        return fmt.aprintf("Failed to unmap shared memory: %s", strerrno(v.errno))
+    case Arena_Init_Failed:
+        return fmt.aprintf("Failed to initialise arena from shared memory: %v", v.err)
+    }
+    unreachable()
+}
+
 // DOCS: do not manually call `_process_tracker_init`
-_process_tracker_init :: proc() -> (ok: bool) {
+_process_tracker_init :: proc() -> (err: Process_Tracker_Error) {
     g_shared_mem = posix.mmap(
         rawptr(uintptr(0)),
         SHARED_MEM_SIZE,
@@ -301,8 +294,7 @@ _process_tracker_init :: proc() -> (ok: bool) {
         {.SHARED, .ANONYMOUS},
     )
     if g_shared_mem == posix.MAP_FAILED {
-        log_errorf("Failed to map shared memory: %s", strerror())
-        return
+        return Mmap_Failed{posix.errno()}
     }
 
     arena_err := virtual.arena_init_buffer(
@@ -310,8 +302,7 @@ _process_tracker_init :: proc() -> (ok: bool) {
         slice.bytes_from_ptr(g_shared_mem, SHARED_MEM_SIZE),
     )
     if arena_err != .None {
-        log_errorf("Failed to initialized arena from shared memory: %v", arena_err)
-        return
+        return Arena_Init_Failed{arena_err}
     }
     context.allocator = virtual.arena_allocator(&g_shared_mem_arena)
     g_shared_mem_allocator = context.allocator
@@ -329,30 +320,116 @@ _process_tracker_init :: proc() -> (ok: bool) {
         size_of(sync.Mutex),
     )
 
-    return true
+    return nil
 }
 
 // DOCS: do not manually call `_process_tracker_destroy`
-_process_tracker_destroy :: proc() -> (ok: bool) {
+_process_tracker_destroy :: proc() -> (err: Process_Tracker_Error) {
     if g_shared_mem != nil {
         if posix.munmap(g_shared_mem, SHARED_MEM_SIZE) == .FAIL {
-            log_errorf("Failed to unmap shared memory: %s", strerror())
-            return
+            return Unmap_Failed{posix.errno()}
         }
     }
-    return true
+    return nil
 }
 
 
 _program :: proc($name: string, loc: Loc) -> (found: bool) {
-    res, ok := run_prog_sync_unchecked(
+    res, err := run_prog_sync_unchecked(
         "sh",
         {"-c", "command -v " + name},
         .Silent,
         context.temp_allocator,
         loc,
     )
-    return res.exit == nil && ok
+    return res.exit == nil && err == nil
+}
+
+
+_Internal_Error :: union {
+    // `pipe_init`
+    Fd_Create_Failed,
+    // `pipe_close_*`, `fd_close`
+    Fd_Close_Failed,
+    // `pipe_redirect`, `fd_redirect`
+    Fd_Redirect_Failed,
+    // `pipe_reaa`
+    Pipe_Read_Failed,
+}
+
+Fd_Kind :: enum {
+    File,
+    Pipe,
+    Read_Pipe,
+    Write_Pipe,
+}
+
+Fd_Create_Failed :: struct {
+    errno: Errno,
+    kind:  Fd_Kind,
+}
+
+Fd_Close_Failed :: struct {
+    errno: Errno,
+    kind:  Fd_Kind,
+}
+
+Fd_Redirect_Failed :: struct {
+    errno: Errno,
+    kind:  Fd_Kind,
+    oldfd: posix.FD,
+    newfd: posix.FD,
+}
+
+Pipe_Read_Failed :: struct {
+    errno: Errno,
+}
+
+internal_strerror :: proc(err: Internal_Error, alloc := context.allocator) -> string {
+    context.allocator = alloc
+    switch v in err {
+    case Fd_Create_Failed:
+        kind_str: string
+        switch v.kind {
+        case .Pipe, .Read_Pipe, .Write_Pipe:
+            kind_str = "pipes"
+        case .File:
+            kind_str = "file"
+        }
+        return fmt.aprintf("Failed to create %s: %s", kind_str, strerrno(v.errno))
+    case Fd_Close_Failed:
+        kind_str: string
+        switch v.kind {
+        case .Pipe:
+            kind_str = "pipe"
+        case .Read_Pipe:
+            kind_str = "read pipe"
+        case .Write_Pipe:
+            kind_str = "write pipe"
+        case .File:
+            kind_str = "file"
+        }
+        return fmt.aprintf("Failed to close %s: %s", kind_str, strerrno(v.errno))
+    case Fd_Redirect_Failed:
+        kind_str: string
+        switch v.kind {
+        case .Pipe, .Read_Pipe, .Write_Pipe:
+            kind_str = "pipe"
+        case .File:
+            kind_str = "file"
+        }
+        return fmt.aprintf(
+            "Failed to redirect old %s: %v, new %s: %v: %s",
+            kind_str,
+            v.oldfd,
+            kind_str,
+            v.newfd,
+            strerrno(v.errno),
+        )
+    case Pipe_Read_Failed:
+        return fmt.aprintf("Failed to read pipe: %s", strerrno(v.errno))
+    }
+    unreachable()
 }
 
 
@@ -367,45 +444,35 @@ Pipe_Separate :: struct #align (size_of(posix.FD)) {
 }
 
 @(require_results)
-pipe_init :: proc(self: ^Pipe, loc: Loc) -> (ok: bool) {
+pipe_init :: proc(self: ^Pipe, loc: Loc) -> (err: Internal_Error) {
     if posix.pipe(&self.array) == .FAIL {
-        log_errorf("Failed to create pipes: %s", strerror(), loc = loc)
-        return false
+        return Fd_Create_Failed{posix.errno(), .Pipe}
     }
-    return true
+    return nil
 }
 
 @(require_results)
-pipe_close_read :: proc(self: ^Pipe, loc: Loc) -> (ok: bool) {
+pipe_close_read :: proc(self: ^Pipe, loc: Loc) -> (err: Internal_Error) {
     if posix.close(self.struc.read) == .FAIL {
-        log_errorf("Failed to close read pipe: %s", strerror(), loc = loc)
-        return false
+        return Fd_Close_Failed{posix.errno(), .Read_Pipe}
     }
-    return true
+    return nil
 }
 
 @(require_results)
-pipe_close_write :: proc(self: ^Pipe, loc: Loc) -> (ok: bool) {
+pipe_close_write :: proc(self: ^Pipe, loc: Loc) -> (err: Internal_Error) {
     if posix.close(self.struc.write) == .FAIL {
-        log_errorf("Failed to close write pipe: %s", strerror(), loc = loc)
-        return false
+        return Fd_Close_Failed{posix.errno(), .Write_Pipe}
     }
-    return true
+    return nil
 }
 
 @(require_results)
-pipe_redirect :: proc(self: ^Pipe, newfd: posix.FD, loc: Loc) -> (ok: bool) {
+pipe_redirect :: proc(self: ^Pipe, newfd: posix.FD, loc: Loc) -> (err: Internal_Error) {
     if posix.dup2(self.struc.write, newfd) == FAIL {
-        log_errorf(
-            "Failed to redirect oldfd: %v, newfd: %v: %s",
-            self.struc.write,
-            newfd,
-            strerror(),
-            loc = loc,
-        )
-        return false
+        return Fd_Redirect_Failed{posix.errno(), .Pipe, self.struc.write, newfd}
     }
-    return true
+    return nil
 }
 
 @(require_results)
@@ -415,7 +482,7 @@ pipe_read :: proc(
     alloc := context.allocator,
 ) -> (
     result: string,
-    ok: bool,
+    err: Internal_Error,
 ) {
     INITIAL_BUF_SIZE :: 1024
     pipe_close_write(self, loc) or_return
@@ -431,7 +498,7 @@ pipe_read :: proc(
         if bytes_read == 0 {
             break
         } else if bytes_read == FAIL {
-            log_errorf("Failed to read pipe: %s", strerror(), loc = loc)
+            err = Pipe_Read_Failed{posix.errno()}
             return
         }
         total_bytes_read += bytes_read
@@ -440,31 +507,27 @@ pipe_read :: proc(
         }
     }
     result = strings.clone_from_bytes(buf[:total_bytes_read], alloc)
-    ok = true
     return
 }
 
 
 @(require_results)
-fd_redirect :: proc(fd: posix.FD, newfd: posix.FD, loc: Loc) -> (ok: bool) {
+fd_redirect :: proc(fd: posix.FD, newfd: posix.FD, loc: Loc) -> (err: Internal_Error) {
     if posix.dup2(fd, newfd) == FAIL {
-        log_errorf("Failed to redirect oldfd: %v, newfd: %v: %s", fd, newfd, strerror(), loc = loc)
-        return false
+        return Fd_Redirect_Failed{posix.errno(), .File, fd, newfd}
     }
-    return true
+    return nil
 }
 
 @(require_results)
-fd_close :: proc(fd: posix.FD, loc: Loc) -> (ok: bool) {
+fd_close :: proc(fd: posix.FD, loc: Loc) -> (err: Internal_Error) {
     if posix.close(fd) == .FAIL {
-        log_errorf("Failed to close fd %v: %s", fd, strerror(), loc = loc)
-        return false
+        return Fd_Close_Failed{posix.errno(), .File}
     }
-    return true
+    return nil
 }
 
-
-strerror :: proc() -> cstring {
-    return posix.strerror(posix.errno())
+strerrno :: proc(errno: Errno) -> string {
+    return string(posix.strerror(errno))
 }
 
