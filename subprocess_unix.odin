@@ -2,7 +2,6 @@
 package subprocess
 
 import "core:c/libc"
-import "core:encoding/ansi"
 import "core:fmt"
 import "core:log"
 import "core:mem"
@@ -42,6 +41,7 @@ _process_wait :: proc(
     loc: Loc,
 ) -> (
     result: Process_Result,
+    log: Maybe(string),
     ok: bool,
 ) {
     for {
@@ -88,7 +88,6 @@ _process_wait :: proc(
             }
 
             if g_process_tracker_initialised {
-                log_str: Maybe(string)
                 if !(child_appended && sync.atomic_load(&current.has_run)) {     // short-circuit evaluation
                     early_exit = true
                     log_errorf(
@@ -99,27 +98,11 @@ _process_wait :: proc(
                 }
                 if child_appended {
                     if sync.mutex_guard(g_process_tracker_mutex) {
-                        log_str = strings.to_string(current.log)
-                        if len(log_str.?) <= 0 {
-                            log_str = nil
+                        log = strings.to_string(current.log)
+                        if len(log.?) <= 0 {
+                            log = nil
                         }
                     }
-                }
-                if log_str != nil {
-                    log_infof(
-                        strings.concatenate(
-                            {
-                                "Log from %v:\n",
-                                ansi_graphic(ansi.BG_BRIGHT_BLACK, alloc = context.temp_allocator),
-                                "%s",
-                                ansi_reset(),
-                            },
-                            context.temp_allocator,
-                        ),
-                        self.pid,
-                        log_str.?,
-                        loc = loc,
-                    )
                 }
             }
         }
@@ -238,7 +221,7 @@ _run_prog_async_unchecked :: proc(
             if sync.mutex_guard(g_process_tracker_mutex) {
                 assert(g_process_tracker != nil || g_process_tracker_mutex != nil)
                 current = map_insert(g_process_tracker, pid, status)^
-                logger = create_builder_logger(
+                logger = create_process_logger(
                     &current.log,
                     g_shared_mem_allocator,
                     g_process_tracker_mutex,

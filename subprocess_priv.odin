@@ -36,7 +36,13 @@ Process_Status :: struct {
 }
 
 
-log_header :: proc(sb: ^strings.Builder, level: log.Level, color: bool, loc: Loc) {
+log_header :: proc(
+    sb: ^strings.Builder,
+    level: log.Level,
+    color: bool,
+    loc: Loc,
+    bg: Maybe(string) = nil,
+) {
     if color {
         color: string
         switch level {
@@ -47,9 +53,13 @@ log_header :: proc(sb: ^strings.Builder, level: log.Level, color: bool, loc: Loc
         case .Fatal, .Error:
             color = ansi.FG_RED
         case .Info:
-            color = ansi.RESET
+            color = ansi.FG_DEFAULT
         }
-        ansi_graphic(strings.to_writer(sb), color)
+        if bg != nil {
+            ansi_graphic(strings.to_writer(sb), color, bg.?)
+        } else {
+            ansi_graphic(strings.to_writer(sb), color)
+        }
     } else {
         LEVEL_HEADERS := [?]string {
             0 ..< 10 = "[DEBUG]",
@@ -160,26 +170,26 @@ concat_string_sep :: proc(strs: []string, sep: string, alloc := context.allocato
 }
 
 
-Builder_Logger_Data :: struct {
+Process_Logger_Data :: struct {
     builder: ^strings.Builder,
     mutex:   Maybe(^sync.Mutex),
 }
 
-create_builder_logger :: proc(
+create_process_logger :: proc(
     builder: ^strings.Builder,
     alloc := context.allocator,
     mutex: Maybe(^sync.Mutex),
 ) -> log.Logger {
     assert(builder != nil)
 
-    builder_logger_proc :: proc(
+    process_logger_proc :: proc(
         logger_data: rawptr,
         level: log.Level,
         text: string,
         options: log.Options,
         loc: Loc,
     ) {
-        data := cast(^Builder_Logger_Data)logger_data
+        data := cast(^Process_Logger_Data)logger_data
         mutex, mutex_ok := data.mutex.?
         if mutex_ok {
             sync.mutex_lock(mutex)
@@ -189,16 +199,18 @@ create_builder_logger :: proc(
         defer if mutex_ok {
             sync.mutex_unlock(mutex)
         }
-        log_header(data.builder, level, false, loc)
+        log_header(data.builder, level, true, loc, ansi.BG_BRIGHT_BLACK)
+        ansi_graphic(strings.to_writer(data.builder), ansi.BG_BRIGHT_BLACK)
         fmt.sbprintf(data.builder, text)
+        ansi_reset(strings.to_writer(data.builder))
     }
 
     // NOTE: I only intend to allocate this to the shared arena for now
-    data := new(Builder_Logger_Data, alloc)
+    data := new(Process_Logger_Data, alloc)
     data^ = {
         builder = builder,
         mutex   = mutex,
     }
-    return log.Logger{builder_logger_proc, data, log.Level.Debug, Default_Logger_Opts}
+    return log.Logger{process_logger_proc, data, log.Level.Debug, Default_Logger_Opts}
 }
 

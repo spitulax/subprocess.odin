@@ -86,7 +86,12 @@ process_wait :: proc(
     result: Process_Result,
     ok: bool,
 ) {
-    return _process_wait(self, allocator, loc)
+    log: Maybe(string)
+    result, log, ok = _process_wait(self, allocator, loc)
+    if log != nil {
+        log_infof("Log from %v:\n%s", self.pid, log.?, loc = loc)
+    }
+    return
 }
 
 process_wait_many :: proc(
