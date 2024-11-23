@@ -1,2 +1,6 @@
 build
 result
+
+test
+test.odin
+*.bin

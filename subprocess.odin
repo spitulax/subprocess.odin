@@ -2,13 +2,66 @@ package subprocess
 
 import "base:runtime"
 import "core:fmt"
+import "core:log"
 import "core:time"
 
 
 OS_Set :: bit_set[runtime.Odin_OS_Type]
 // TODO: update this
-SUPPORTED_OS :: OS_Set{.Linux}
+SUPPORTED_OS :: OS_Set{.Linux, .Darwin, .FreeBSD, .OpenBSD, .NetBSD}
 #assert(ODIN_OS in SUPPORTED_OS)
+
+
+Flags :: enum {
+    Use_Context_Logger,
+    Echo_Commands,
+}
+Flags_Set :: bit_set[Flags]
+
+
+create_logger :: proc() -> log.Logger {
+    logger_proc :: proc(
+        logger_data: rawptr,
+        level: log.Level,
+        text: string,
+        options: log.Options,
+        loc: Loc,
+    ) {
+        _log_no_flag(level, text, loc)
+    }
+    return log.Logger{logger_proc, nil, log.Level.Debug, {}}
+}
+
+log_fatal :: proc(args: ..any, sep: string = " ", loc := #caller_location) {
+    _log_sep(.Fatal, sep, loc, ..args)
+}
+log_fatalf :: proc(fmt: string, args: ..any, loc := #caller_location) {
+    _log_fmt(.Fatal, fmt, loc, ..args)
+}
+log_error :: proc(args: ..any, sep: string = " ", loc := #caller_location) {
+    _log_sep(.Error, sep, loc, ..args)
+}
+log_errorf :: proc(fmt: string, args: ..any, loc := #caller_location) {
+    _log_fmt(.Error, fmt, loc, ..args)
+}
+log_warn :: proc(args: ..any, sep: string = " ", loc := #caller_location) {
+    _log_sep(.Warning, sep, loc, ..args)
+}
+log_warnf :: proc(fmt: string, args: ..any, loc := #caller_location) {
+    _log_fmt(.Warning, fmt, loc, ..args)
+}
+log_info :: proc(args: ..any, sep: string = " ", loc := #caller_location) {
+    _log_sep(.Info, sep, loc, ..args)
+}
+log_infof :: proc(fmt: string, args: ..any, loc := #caller_location) {
+    _log_fmt(.Info, fmt, loc, ..args)
+}
+log_debug :: proc(args: ..any, sep: string = " ", loc := #caller_location) {
+    _log_sep(.Debug, sep, loc, ..args)
+}
+log_debugf :: proc(fmt: string, args: ..any, loc := #caller_location) {
+    _log_fmt(.Debug, fmt, loc, ..args)
+}
 
 
 Exit :: _Exit
@@ -93,7 +146,7 @@ run_prog_async_unchecked :: proc(
     return _run_prog_async_unchecked(prog, args, option, loc)
 }
 
-// `process` is empty or {} if `cmd` is not found
+// DOCS: `process` is empty or {} if `cmd` is not found
 run_prog_async_checked :: proc(
     prog: Program,
     args: []string = nil,
@@ -144,15 +197,55 @@ run_prog_sync_checked :: proc(
 }
 
 
+// DOCS: tell the user to manually init and destroy process tracker if they want to store process log
+process_tracker_init :: proc() -> (ok: bool) {
+    if g_process_tracker_initialised {
+        return
+    }
+    ok = _process_tracker_init()
+    g_process_tracker_initialised = ok
+    return
+}
+
+process_tracker_destroy :: proc() -> (ok: bool) {
+    if !g_process_tracker_initialised {
+        return
+    }
+    ok = _process_tracker_destroy()
+    g_process_tracker_initialised = !ok
+    return
+}
+
+
 Program :: struct {
     found: bool,
     name:  string,
     //full_path: string, // would require allocation
 }
 
+// DOCS: `ok` is always true if not `required`
 @(require_results)
-program :: proc($name: string, loc := #caller_location) -> Program {
-    return _program(name, loc)
+program :: proc(
+    $name: string,
+    required: bool = false,
+    loc := #caller_location,
+) -> (
+    prog: Program,
+    ok: bool,
+) #optional_ok {
+    flags_temp := g_flags
+    disable_default_flags({.Echo_Commands})
+    found := _program(name, loc)
+    g_flags = flags_temp
+    if !found {
+        msg :: "Failed to find `" + name + "`"
+        if required {
+            log_error(msg, loc = loc)
+        } else {
+            log_warn(msg, loc = loc)
+        }
+    }
+    return {name = name, found = found}, !(required && !found)
 }
 
 @(require_results)
@@ -176,7 +269,19 @@ check_program :: proc(
 }
 
 
-set_use_context_logger :: proc(use: bool = true) {
-    g_use_context_logger = use
+get_default_flags :: proc() -> Flags_Set {
+    return g_flags
+}
+
+set_default_flags :: proc(flags: Flags_Set) {
+    g_flags = flags
+}
+
+enable_default_flags :: proc(flags: Flags_Set) {
+    g_flags += flags
+}
+
+disable_default_flags :: proc(flags: Flags_Set) {
+    g_flags -= flags
 }
 
