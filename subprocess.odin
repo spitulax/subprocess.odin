@@ -15,6 +15,7 @@ SUPPORTED_OS :: OS_Set{.Linux, .Darwin, .FreeBSD, .OpenBSD, .NetBSD}
 Flags :: enum {
     Use_Context_Logger,
     Echo_Commands,
+    Echo_Commands_Debug,
 }
 Flags_Set :: bit_set[Flags]
 
@@ -313,7 +314,7 @@ program :: proc($name: string, loc := #caller_location) -> Program {
 @(require_results)
 program_check :: proc($name: string, loc := #caller_location) -> (prog: Program, err: Error) {
     flags_temp := g_flags
-    disable_default_flags({.Echo_Commands})
+    disable_default_flags({.Echo_Commands, .Echo_Commands_Debug})
     found := _program(name, loc)
     g_flags = flags_temp
     if !found {

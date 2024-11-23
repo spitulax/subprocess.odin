@@ -143,14 +143,18 @@ _run_prog_async_unchecked :: proc(
     }
     append(&argv, nil)
 
-    if .Echo_Commands in g_flags {
-        log_debugf(
+    if g_flags & {.Echo_Commands, .Echo_Commands_Debug} != {} {
+        msg := fmt.tprintf(
             "(%v) %s %s",
             option,
             prog,
             concat_string_sep(args, " ", context.temp_allocator),
-            loc = loc,
         )
+        if .Echo_Commands in g_flags {
+            log_info(msg, loc = loc)
+        } else if .Echo_Commands_Debug in g_flags {
+            log_debug(msg, loc = loc)
+        }
     }
 
     child_pid := posix.fork()

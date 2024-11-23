@@ -8,7 +8,6 @@ import "core:io"
 import "core:log"
 import "core:mem"
 import "core:mem/virtual"
-import "core:os"
 import "core:strings"
 import "core:sync"
 
