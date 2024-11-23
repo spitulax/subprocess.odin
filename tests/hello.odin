@@ -23,7 +23,7 @@ hello :: proc(t: ^testing.T) {
     if err == nil {
         assert(result.exit == nil && len(result.stderr) == 0)
     }
-    wrap(t, testing.expect_value(t, result.stdout, "Hello, World!\n"))
+    testing.expect_value(t, result.stdout, "Hello, World!\n")
     lib.process_result_destroy(&result)
 
     result, err = lib.run_prog_sync(sh, {"-c", "echo 'Hello, World!'"}, .Silent)

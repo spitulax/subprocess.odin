@@ -16,14 +16,8 @@ capture :: proc(t: ^testing.T) {
     )
     wrap(t, result1_err)
     defer lib.process_result_destroy(&result1)
-    wrap(
-        t,
-        testing.expect(
-            t,
-            (result1.stdout == "HELLO, STDOUT!\n" && result1.stderr == ""),
-            "Unexpected output",
-        ),
-    )
+    testing.expect_value(t, result1.stdout, "HELLO, STDOUT!\n")
+    testing.expect_value(t, result1.stderr, "")
 
     result2, result2_err := lib.run_prog_sync(
         sh,
@@ -32,14 +26,8 @@ capture :: proc(t: ^testing.T) {
     )
     wrap(t, result2_err)
     defer lib.process_result_destroy(&result2)
-    wrap(
-        t,
-        testing.expect(
-            t,
-            (result2.stderr == "HELLO, STDERR!\n" && result2.stdout == ""),
-            "Unexpected output",
-        ),
-    )
+    testing.expect_value(t, result2.stderr, "HELLO, STDERR!\n")
+    testing.expect_value(t, result2.stdout, "")
 
     result3, result3_err := lib.run_prog_sync(
         sh,
@@ -48,13 +36,7 @@ capture :: proc(t: ^testing.T) {
     )
     wrap(t, result3_err)
     defer lib.process_result_destroy(&result3)
-    wrap(
-        t,
-        testing.expect(
-            t,
-            (result3.stderr == "HELLO, STDERR!\n" && result3.stdout == "HELLO, STDOUT!\n"),
-            "Unexpected output",
-        ),
-    )
+    testing.expect_value(t, result3.stdout, "HELLO, STDOUT!\n")
+    testing.expect_value(t, result3.stderr, "HELLO, STDERR!\n")
 }
 
