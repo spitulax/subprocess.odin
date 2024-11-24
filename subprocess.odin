@@ -9,7 +9,8 @@ import "core:time"
 
 OS_Set :: bit_set[runtime.Odin_OS_Type]
 // TODO: update this
-SUPPORTED_OS :: OS_Set{.Linux, .Darwin, .FreeBSD, .OpenBSD, .NetBSD}
+POSIX_OS :: OS_Set{.Linux, .Darwin, .FreeBSD, .OpenBSD, .NetBSD} // use implementations from `subprocess_posix.odin`
+SUPPORTED_OS :: POSIX_OS
 #assert(ODIN_OS in SUPPORTED_OS)
 
 
