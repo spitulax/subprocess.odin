@@ -1,4 +1,5 @@
 #+build linux, darwin, netbsd, openbsd, freebsd
+#+private
 package subprocess
 
 import "core:c/libc"
