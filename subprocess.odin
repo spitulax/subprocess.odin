@@ -145,14 +145,14 @@ process_handle :: proc(self: Process) -> Process_Handle {
 
 process_wait :: proc(
     self: Process,
-    allocator := context.allocator,
+    alloc := context.allocator,
     loc := #caller_location,
 ) -> (
     result: Process_Result,
     err: Error,
 ) {
     log: Maybe(string)
-    result, log, err = _process_wait(self, allocator, loc)
+    result, log, err = _process_wait(self, alloc, loc)
     if log != nil {
         log_infof("Log from %v:\n%s", self.pid, log.?, loc = loc)
     }
@@ -254,14 +254,14 @@ run_prog_sync_unchecked :: proc(
     prog: string,
     args: []string = nil,
     option: Run_Prog_Option = .Share,
-    allocator := context.allocator,
+    alloc := context.allocator,
     loc := #caller_location,
 ) -> (
     result: Process_Result,
     err: Error,
 ) {
     process := run_prog_async_unchecked(prog, args, option, loc) or_return
-    return process_wait(process, allocator, loc)
+    return process_wait(process, alloc, loc)
 }
 
 // `result` is empty or {} if `cmd` is not found
@@ -269,7 +269,7 @@ run_prog_sync_checked :: proc(
     prog: Program,
     args: []string = nil,
     option: Run_Prog_Option = .Share,
-    allocator := context.allocator,
+    alloc := context.allocator,
     loc := #caller_location,
 ) -> (
     result: Process_Result,
@@ -280,7 +280,7 @@ run_prog_sync_checked :: proc(
         return
     }
     process := run_prog_async_unchecked(prog.name, args, option, loc) or_return
-    return process_wait(process, allocator, loc)
+    return process_wait(process, alloc, loc)
 }
 
 
