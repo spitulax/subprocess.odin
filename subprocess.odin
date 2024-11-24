@@ -69,15 +69,15 @@ Process_Tracker_Error :: _Process_Tracker_Error
 
 Internal_Error :: _Internal_Error
 
-strerror :: proc(err: Error, alloc := context.allocator) -> string {
+error_str :: proc(err: Error, alloc := context.allocator) -> string {
     context.allocator = alloc
     switch v in err {
     case General_Error:
-        return general_strerror(v)
+        return general_error_str(v)
     case Process_Tracker_Error:
-        return process_tracker_strerror(v)
+        return process_tracker_error_str(v)
     case Internal_Error:
-        return internal_strerror(v)
+        return internal_error_str(v)
     }
     unreachable()
 }

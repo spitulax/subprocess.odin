@@ -36,19 +36,19 @@ Process_Status :: struct {
 }
 
 
-general_strerror :: proc(err: General_Error, alloc := context.allocator) -> string {
+general_error_str :: proc(err: General_Error, alloc := context.allocator) -> string {
     context.allocator = alloc
     switch v in err {
     case Program_Not_Found:
         return fmt.aprintf("Cannot find `%v`", v.name)
     case Process_Cannot_Exit:
-        return fmt.aprintf("Process %v cannot exit: %s", v.handle, strerrno(v.errno))
+        return fmt.aprintf("Process %v cannot exit: %s", v.handle, strerror(v.errno))
     case Program_Not_Executed:
         return fmt.aprintf("Process %v did not execute `%s` successfully", v.handle, v.name)
     case Program_Execution_Failed:
-        return fmt.aprintf("Failed to run `%s`: %s", v.name, strerrno(v.errno))
+        return fmt.aprintf("Failed to run `%s`: %s", v.name, strerror(v.errno))
     case Spawn_Failed:
-        return fmt.aprintf("Failed to spawn child process: %s", strerrno(v.errno))
+        return fmt.aprintf("Failed to spawn child process: %s", strerror(v.errno))
     }
     unreachable()
 }

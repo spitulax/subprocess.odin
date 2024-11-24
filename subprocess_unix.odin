@@ -166,7 +166,7 @@ _run_prog_async_unchecked :: proc(
     if child_pid == 0 {
         wrap :: proc(err: Error, loc: Loc) {
             if err != nil {
-                log_fatal(strerror(err), loc = loc)
+                log_fatal(error_str(err), loc = loc)
                 posix.exit(1)
             }
         }
@@ -276,16 +276,16 @@ Arena_Init_Failed :: struct {
     err: mem.Allocator_Error,
 }
 
-process_tracker_strerror :: proc(
+process_tracker_error_str :: proc(
     err: _Process_Tracker_Error,
     alloc := context.allocator,
 ) -> string {
     context.allocator = alloc
     switch v in err {
     case Mmap_Failed:
-        return fmt.aprintf("Failed to map shared memory: %s", strerrno(v.errno))
+        return fmt.aprintf("Failed to map shared memory: %s", strerror(v.errno))
     case Unmap_Failed:
-        return fmt.aprintf("Failed to unmap shared memory: %s", strerrno(v.errno))
+        return fmt.aprintf("Failed to unmap shared memory: %s", strerror(v.errno))
     case Arena_Init_Failed:
         return fmt.aprintf("Failed to initialise arena from shared memory: %v", v.err)
     }
@@ -392,7 +392,7 @@ Pipe_Read_Failed :: struct {
     errno: Errno,
 }
 
-internal_strerror :: proc(err: Internal_Error, alloc := context.allocator) -> string {
+internal_error_str :: proc(err: Internal_Error, alloc := context.allocator) -> string {
     context.allocator = alloc
     switch v in err {
     case Fd_Create_Failed:
@@ -403,7 +403,7 @@ internal_strerror :: proc(err: Internal_Error, alloc := context.allocator) -> st
         case .File:
             kind_str = "file"
         }
-        return fmt.aprintf("Failed to create %s: %s", kind_str, strerrno(v.errno))
+        return fmt.aprintf("Failed to create %s: %s", kind_str, strerror(v.errno))
     case Fd_Close_Failed:
         kind_str: string
         switch v.kind {
@@ -416,7 +416,7 @@ internal_strerror :: proc(err: Internal_Error, alloc := context.allocator) -> st
         case .File:
             kind_str = "file"
         }
-        return fmt.aprintf("Failed to close %s: %s", kind_str, strerrno(v.errno))
+        return fmt.aprintf("Failed to close %s: %s", kind_str, strerror(v.errno))
     case Fd_Redirect_Failed:
         kind_str: string
         switch v.kind {
@@ -431,10 +431,10 @@ internal_strerror :: proc(err: Internal_Error, alloc := context.allocator) -> st
             v.oldfd,
             kind_str,
             v.newfd,
-            strerrno(v.errno),
+            strerror(v.errno),
         )
     case Pipe_Read_Failed:
-        return fmt.aprintf("Failed to read pipe: %s", strerrno(v.errno))
+        return fmt.aprintf("Failed to read pipe: %s", strerror(v.errno))
     }
     unreachable()
 }
@@ -534,7 +534,7 @@ fd_close :: proc(fd: posix.FD, loc: Loc) -> (err: Internal_Error) {
     return nil
 }
 
-strerrno :: proc(errno: Errno) -> string {
+strerror :: proc(errno: Errno) -> string {
     return string(posix.strerror(errno))
 }
 
