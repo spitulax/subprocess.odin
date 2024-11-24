@@ -1,5 +1,7 @@
 package subprocess
 
+// MAYBE: Add a function that invokes the respective system's shell like libc's `system()`
+
 import "base:intrinsics"
 import "base:runtime"
 import "core:log"
