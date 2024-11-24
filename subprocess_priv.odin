@@ -36,8 +36,7 @@ Process_Status :: struct {
 }
 
 
-general_error_str :: proc(self: General_Error, alloc := context.allocator) -> string {
-    context.allocator = alloc
+general_error_str :: proc(self: General_Error) -> string {
     switch v in self {
     case Program_Not_Found:
         return fmt.aprintf("Cannot find `%v`", v.name)
