@@ -112,7 +112,7 @@ _log_no_flag :: proc(level: log.Level, str: string, loc: Loc) {
     if level <= log.Level.Debug {
         ansi_graphic(strings.to_writer(&sb), ansi.FG_BRIGHT_BLACK)
     }
-    fmt.sbprintf(&sb, str)
+    fmt.sbprint(&sb, str)
     if level <= log.Level.Debug {
         ansi_reset(strings.to_writer(&sb))
     }
@@ -137,7 +137,8 @@ _log_sep :: proc(level: log.Level, sep: string, loc: Loc, args: ..any) {
         if i > 0 {
             fmt.sbprint(&sb, sep)
         }
-        fmt.sbprint(&sb, arg)
+        // Fancy printing by default
+        fmt.sbprintf(&sb, "%#v", arg)
     }
     _log(level, strings.to_string(sb), loc)
 }
