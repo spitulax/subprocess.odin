@@ -41,6 +41,10 @@ _process_wait :: proc(
     log: Maybe(string),
     err: Error,
 ) {
+    defer if err != nil {
+        process_result_destroy(&result)
+    }
+
     for {
         status: i32
         child_pid := posix.waitpid(self.handle, &status, {})

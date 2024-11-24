@@ -205,6 +205,7 @@ process_wait :: proc(
 ) {
     log: Maybe(string)
     result, log, err = _process_wait(self, alloc, loc)
+    // TODO: return the string instead of printing it
     if log != nil {
         log_infof("Log from %v:\n%s", self.handle, log.?, loc = loc)
     }
@@ -243,15 +244,23 @@ Process_Result :: struct {
     stderr:   string, // I didn't make them both Maybe() for "convenience" when accessing them
 }
 
-process_result_destroy :: proc(self: ^Process_Result, loc := #caller_location) {
-    delete(self.stdout, loc = loc)
-    delete(self.stderr, loc = loc)
+process_result_destroy :: proc(
+    self: ^Process_Result,
+    alloc := context.allocator,
+    loc := #caller_location,
+) {
+    delete(self.stdout, alloc, loc)
+    delete(self.stderr, alloc, loc)
     self^ = {}
 }
 
-process_result_destroy_many :: proc(selves: []Process_Result, loc := #caller_location) {
+process_result_destroy_many :: proc(
+    selves: []Process_Result,
+    alloc := context.allocator,
+    loc := #caller_location,
+) {
     for &result in selves {
-        process_result_destroy(&result, loc)
+        process_result_destroy(&result, alloc, loc)
     }
 }
 
