@@ -69,9 +69,9 @@ Process_Tracker_Error :: _Process_Tracker_Error
 
 Internal_Error :: _Internal_Error
 
-error_str :: proc(err: Error, alloc := context.allocator) -> string {
+error_str :: proc(self: Error, alloc := context.allocator) -> string {
     context.allocator = alloc
-    switch v in err {
+    switch v in self {
     case General_Error:
         return general_error_str(v)
     case Process_Tracker_Error:

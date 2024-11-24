@@ -36,9 +36,9 @@ Process_Status :: struct {
 }
 
 
-general_error_str :: proc(err: General_Error, alloc := context.allocator) -> string {
+general_error_str :: proc(self: General_Error, alloc := context.allocator) -> string {
     context.allocator = alloc
-    switch v in err {
+    switch v in self {
     case Program_Not_Found:
         return fmt.aprintf("Cannot find `%v`", v.name)
     case Process_Cannot_Exit:
@@ -52,6 +52,7 @@ general_error_str :: proc(err: General_Error, alloc := context.allocator) -> str
     }
     unreachable()
 }
+
 
 log_header :: proc(
     sb: ^strings.Builder,

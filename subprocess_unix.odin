@@ -272,11 +272,11 @@ Arena_Init_Failed :: struct {
 }
 
 process_tracker_error_str :: proc(
-    err: _Process_Tracker_Error,
+    self: _Process_Tracker_Error,
     alloc := context.allocator,
 ) -> string {
     context.allocator = alloc
-    switch v in err {
+    switch v in self {
     case Mmap_Failed:
         return fmt.aprintf("Failed to map shared memory: %s", strerror(v.errno))
     case Unmap_Failed:
@@ -387,9 +387,9 @@ Pipe_Read_Failed :: struct {
     errno: Errno,
 }
 
-internal_error_str :: proc(err: Internal_Error, alloc := context.allocator) -> string {
+internal_error_str :: proc(self: Internal_Error, alloc := context.allocator) -> string {
     context.allocator = alloc
-    switch v in err {
+    switch v in self {
     case Fd_Create_Failed:
         kind_str: string
         switch v.kind {
