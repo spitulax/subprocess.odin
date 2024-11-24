@@ -135,12 +135,9 @@ Process_Handle :: _Process_Handle
 
 Process :: struct {
     using _impl:     _Process,
+    handle:          Process_Handle,
     execution_time:  time.Time,
     executable_name: string,
-}
-
-process_handle :: proc(self: Process) -> Process_Handle {
-    return _process_handle(self)
 }
 
 process_wait :: proc(
@@ -154,7 +151,7 @@ process_wait :: proc(
     log: Maybe(string)
     result, log, err = _process_wait(self, alloc, loc)
     if log != nil {
-        log_infof("Log from %v:\n%s", self.pid, log.?, loc = loc)
+        log_infof("Log from %v:\n%s", self.handle, log.?, loc = loc)
     }
     return
 }

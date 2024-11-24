@@ -27,13 +27,8 @@ _Process_Handle :: posix.pid_t
 
 
 _Process :: struct {
-    pid:         Process_Handle,
     stdout_pipe: Maybe(Pipe),
     stderr_pipe: Maybe(Pipe),
-}
-
-_process_handle :: proc(self: Process) -> Process_Handle {
-    return self.pid
 }
 
 _process_wait :: proc(
@@ -47,7 +42,7 @@ _process_wait :: proc(
 ) {
     for {
         status: i32
-        child_pid := posix.waitpid(self.pid, &status, {})
+        child_pid := posix.waitpid(self.handle, &status, {})
         if child_pid == FAIL {
             err = General_Error(Process_Cannot_Exit{child_pid, posix.errno()})
         }
@@ -60,7 +55,7 @@ _process_wait :: proc(
                 if len(g_process_tracker^) <= 0 {
                     child_appended = false
                 } else {
-                    current = g_process_tracker[self.pid]
+                    current = g_process_tracker[self.handle]
                     child_appended = true
                 }
             }
@@ -68,7 +63,7 @@ _process_wait :: proc(
 
         defer if g_process_tracker_initialised {
             if sync.mutex_guard(g_process_tracker_mutex) {
-                delete_key(g_process_tracker, self.pid)
+                delete_key(g_process_tracker, self.handle)
             }
         }
 
@@ -88,7 +83,7 @@ _process_wait :: proc(
 
             if g_process_tracker_initialised {
                 if !(child_appended && sync.atomic_load(&current.has_run)) {     // short-circuit evaluation
-                    err = General_Error(Program_Not_Executed{self.pid, self.executable_name})
+                    err = General_Error(Program_Not_Executed{self.handle, self.executable_name})
                 }
                 if child_appended {
                     if sync.mutex_guard(g_process_tracker_mutex) {
@@ -248,7 +243,7 @@ _run_prog_async_unchecked :: proc(
     maybe_stdout_pipe: Maybe(Pipe) = (option == .Capture) ? stdout_pipe : nil
     maybe_stderr_pipe: Maybe(Pipe) = (option == .Capture) ? stderr_pipe : nil
     return Process {
-            pid = child_pid,
+            handle = child_pid,
             execution_time = execution_time,
             executable_name = prog,
             stdout_pipe = maybe_stdout_pipe,
