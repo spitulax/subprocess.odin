@@ -1,7 +1,9 @@
 package subprocess
 
+import "base:intrinsics"
 import "base:runtime"
 import "core:log"
+import "core:reflect"
 import "core:time"
 
 
@@ -78,6 +80,58 @@ error_str :: proc(self: Error, alloc := context.allocator) -> string {
         return process_tracker_error_str(v)
     case Internal_Error:
         return internal_error_str(v)
+    }
+    unreachable()
+}
+
+// DOCS: Gets the variant of a union and if its variant is another union, it will get its variant and so on.
+// Example:
+// ```
+// e: Error = Internal_Error(Fd_Close_Failed{})
+// fmt.println(union_last_variant(e))
+// ```
+// Will output:
+// ```
+// Fd_Close_Failed
+// ```
+union_last_variant :: proc(uni: $T) -> typeid where intrinsics.type_is_union(T) {
+    if uni == nil {
+        return nil
+    }
+
+    cur_type_info := reflect.union_variant_type_info(uni)
+    for {
+        #partial switch v in runtime.type_info_base(cur_type_info).variant {
+        case runtime.Type_Info_Union:
+            tag_ptr := any{rawptr(uintptr(any(uni).data) + v.tag_offset), v.tag_type.id}
+            tag: i64
+            switch i in tag_ptr {
+            case u8:
+                tag = i64(i)
+            case i8:
+                tag = i64(i)
+            case u16:
+                tag = i64(i)
+            case i16:
+                tag = i64(i)
+            case u32:
+                tag = i64(i)
+            case i32:
+                tag = i64(i)
+            case u64:
+                tag = i64(i)
+            case i64:
+                tag = i
+            case:
+                unimplemented()
+            }
+            if !v.no_nil && tag != 0 {
+                tag -= 1
+            }
+            cur_type_info = v.variants[tag]
+        case:
+            return cur_type_info.id
+        }
     }
     unreachable()
 }
