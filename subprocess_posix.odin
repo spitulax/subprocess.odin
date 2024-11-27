@@ -49,7 +49,7 @@ _process_wait :: proc(
         status: i32
         child_pid := posix.waitpid(self.handle, &status, {})
         if child_pid == FAIL {
-            err = General_Error(Process_Cannot_Exit{child_pid, posix.errno()})
+            err = General_Error.Process_Cannot_Exit
         }
         result.duration = time.since(self.execution_time)
 
@@ -88,7 +88,7 @@ _process_wait :: proc(
 
             if g_process_tracker_initialised {
                 if !(child_appended && sync.atomic_load(&current.has_run)) {     // short-circuit evaluation
-                    err = General_Error(Program_Not_Executed{self.handle, self.executable_name})
+                    err = General_Error.Program_Not_Executed
                 }
                 if child_appended {
                     if sync.mutex_guard(g_process_tracker_mutex) {
@@ -159,14 +159,14 @@ _run_prog_async_unchecked :: proc(
 
     child_pid := posix.fork()
     if child_pid == FAIL {
-        err = General_Error(Spawn_Failed{posix.errno()})
+        err = General_Error.Spawn_Failed
         return
     }
 
     if child_pid == 0 {
         wrap :: proc(err: Error, loc: Loc) {
             if err != nil {
-                log_fatal(error_str(err), loc = loc)
+                log_fatal(err, loc = loc)
                 posix.exit(1)
             }
         }
@@ -234,7 +234,7 @@ _run_prog_async_unchecked :: proc(
                 _, exch_ok := sync.atomic_compare_exchange_strong(&current.has_run, true, false)
                 assert(exch_ok)
             }
-            wrap(General_Error(Program_Execution_Failed{posix.errno(), prog}), loc)
+            wrap(General_Error.Program_Execution_Failed, loc)
         }
         unreachable()
     }
@@ -250,7 +250,6 @@ _run_prog_async_unchecked :: proc(
     return Process {
             handle = child_pid,
             execution_time = execution_time,
-            executable_name = prog,
             stdout_pipe = maybe_stdout_pipe,
             stderr_pipe = maybe_stderr_pipe,
         },
@@ -258,38 +257,15 @@ _run_prog_async_unchecked :: proc(
 }
 
 
-_Process_Tracker_Error :: union {
+_Process_Tracker_Error :: enum u8 {
+    None = 0,
     Mmap_Failed,
     Unmap_Failed,
     Arena_Init_Failed,
 }
 
-Mmap_Failed :: struct {
-    errno: Errno,
-}
-
-Unmap_Failed :: struct {
-    errno: Errno,
-}
-
-Arena_Init_Failed :: struct {
-    err: mem.Allocator_Error,
-}
-
-process_tracker_error_str :: proc(self: _Process_Tracker_Error) -> string {
-    switch v in self {
-    case Mmap_Failed:
-        return fmt.aprintf("Failed to map shared memory: %s", strerror(v.errno))
-    case Unmap_Failed:
-        return fmt.aprintf("Failed to unmap shared memory: %s", strerror(v.errno))
-    case Arena_Init_Failed:
-        return fmt.aprintf("Failed to initialise arena from shared memory: %v", v.err)
-    }
-    unreachable()
-}
-
 // DOCS: do not manually call `_process_tracker_init`
-_process_tracker_init :: proc() -> (err: Process_Tracker_Error) {
+_process_tracker_init :: proc() -> Error {
     g_shared_mem = posix.mmap(
         rawptr(uintptr(0)),
         SHARED_MEM_SIZE,
@@ -297,7 +273,7 @@ _process_tracker_init :: proc() -> (err: Process_Tracker_Error) {
         {.SHARED, .ANONYMOUS},
     )
     if g_shared_mem == posix.MAP_FAILED {
-        return Mmap_Failed{posix.errno()}
+        return Process_Tracker_Error.Mmap_Failed
     }
 
     arena_err := virtual.arena_init_buffer(
@@ -305,7 +281,7 @@ _process_tracker_init :: proc() -> (err: Process_Tracker_Error) {
         slice.bytes_from_ptr(g_shared_mem, SHARED_MEM_SIZE),
     )
     if arena_err != .None {
-        return Arena_Init_Failed{arena_err}
+        return Process_Tracker_Error.Arena_Init_Failed
     }
     context.allocator = virtual.arena_allocator(&g_shared_mem_arena)
     g_shared_mem_allocator = context.allocator
@@ -327,10 +303,10 @@ _process_tracker_init :: proc() -> (err: Process_Tracker_Error) {
 }
 
 // DOCS: do not manually call `_process_tracker_destroy`
-_process_tracker_destroy :: proc() -> (err: Process_Tracker_Error) {
+_process_tracker_destroy :: proc() -> Error {
     if g_shared_mem != nil {
         if posix.munmap(g_shared_mem, SHARED_MEM_SIZE) == .FAIL {
-            return Unmap_Failed{posix.errno()}
+            return Process_Tracker_Error.Unmap_Failed
         }
     }
     return nil
@@ -349,91 +325,23 @@ _program :: proc($name: string, loc: Loc) -> (found: bool) {
 }
 
 
-_Internal_Error :: union {
+_Internal_Error :: enum u8 {
+    None = 0,
+
     // `pipe_init`
-    Fd_Create_Failed,
-    // `pipe_close_*`, `fd_close`
-    Fd_Close_Failed,
-    // `pipe_redirect`, `fd_redirect`
-    Fd_Redirect_Failed,
+    Pipe_Init_Failed,
+    // `pipe_close_*`
+    Pipe_Close_Failed,
+    // `pipe_redirect`
+    Pipe_Redirect_Failed,
     // `pipe_reaa`
     Pipe_Read_Failed,
-}
 
-Fd_Kind :: enum {
-    File,
-    Pipe,
-    Read_Pipe,
-    Write_Pipe,
+    //  `fd_close`
+    Fd_Close_Failed,
+    // `fd_redirect`
+    Fd_Redirect_Failed,
 }
-
-Fd_Create_Failed :: struct {
-    errno: Errno,
-    kind:  Fd_Kind,
-}
-
-Fd_Close_Failed :: struct {
-    errno: Errno,
-    kind:  Fd_Kind,
-}
-
-Fd_Redirect_Failed :: struct {
-    errno: Errno,
-    kind:  Fd_Kind,
-    oldfd: posix.FD,
-    newfd: posix.FD,
-}
-
-Pipe_Read_Failed :: struct {
-    errno: Errno,
-}
-
-internal_error_str :: proc(self: Internal_Error) -> string {
-    switch v in self {
-    case Fd_Create_Failed:
-        kind_str: string
-        switch v.kind {
-        case .Pipe, .Read_Pipe, .Write_Pipe:
-            kind_str = "pipes"
-        case .File:
-            kind_str = "file"
-        }
-        return fmt.aprintf("Failed to create %s: %s", kind_str, strerror(v.errno))
-    case Fd_Close_Failed:
-        kind_str: string
-        switch v.kind {
-        case .Pipe:
-            kind_str = "pipe"
-        case .Read_Pipe:
-            kind_str = "read pipe"
-        case .Write_Pipe:
-            kind_str = "write pipe"
-        case .File:
-            kind_str = "file"
-        }
-        return fmt.aprintf("Failed to close %s: %s", kind_str, strerror(v.errno))
-    case Fd_Redirect_Failed:
-        kind_str: string
-        switch v.kind {
-        case .Pipe, .Read_Pipe, .Write_Pipe:
-            kind_str = "pipe"
-        case .File:
-            kind_str = "file"
-        }
-        return fmt.aprintf(
-            "Failed to redirect old %s: %v, new %s: %v: %s",
-            kind_str,
-            v.oldfd,
-            kind_str,
-            v.newfd,
-            strerror(v.errno),
-        )
-    case Pipe_Read_Failed:
-        return fmt.aprintf("Failed to read pipe: %s", strerror(v.errno))
-    }
-    unreachable()
-}
-
 
 Pipe :: struct #raw_union {
     array: Pipe_Both,
@@ -446,33 +354,33 @@ Pipe_Separate :: struct #align (size_of(posix.FD)) {
 }
 
 @(require_results)
-pipe_init :: proc(self: ^Pipe, loc: Loc) -> (err: Internal_Error) {
+pipe_init :: proc(self: ^Pipe, loc: Loc) -> (err: Error) {
     if posix.pipe(&self.array) == .FAIL {
-        return Fd_Create_Failed{posix.errno(), .Pipe}
+        return Internal_Error.Pipe_Init_Failed
     }
     return nil
 }
 
 @(require_results)
-pipe_close_read :: proc(self: ^Pipe, loc: Loc) -> (err: Internal_Error) {
+pipe_close_read :: proc(self: ^Pipe, loc: Loc) -> (err: Error) {
     if posix.close(self.struc.read) == .FAIL {
-        return Fd_Close_Failed{posix.errno(), .Read_Pipe}
+        return Internal_Error.Pipe_Close_Failed
     }
     return nil
 }
 
 @(require_results)
-pipe_close_write :: proc(self: ^Pipe, loc: Loc) -> (err: Internal_Error) {
+pipe_close_write :: proc(self: ^Pipe, loc: Loc) -> (err: Error) {
     if posix.close(self.struc.write) == .FAIL {
-        return Fd_Close_Failed{posix.errno(), .Write_Pipe}
+        return Internal_Error.Pipe_Close_Failed
     }
     return nil
 }
 
 @(require_results)
-pipe_redirect :: proc(self: ^Pipe, newfd: posix.FD, loc: Loc) -> (err: Internal_Error) {
+pipe_redirect :: proc(self: ^Pipe, newfd: posix.FD, loc: Loc) -> (err: Error) {
     if posix.dup2(self.struc.write, newfd) == FAIL {
-        return Fd_Redirect_Failed{posix.errno(), .Pipe, self.struc.write, newfd}
+        return Internal_Error.Pipe_Redirect_Failed
     }
     return nil
 }
@@ -484,7 +392,7 @@ pipe_read :: proc(
     alloc := context.allocator,
 ) -> (
     result: string,
-    err: Internal_Error,
+    err: Error,
 ) {
     INITIAL_BUF_SIZE :: 1024
     pipe_close_write(self, loc) or_return
@@ -500,7 +408,7 @@ pipe_read :: proc(
         if bytes_read == 0 {
             break
         } else if bytes_read == FAIL {
-            err = Pipe_Read_Failed{posix.errno()}
+            err = Internal_Error.Pipe_Read_Failed
             return
         }
         total_bytes_read += bytes_read
@@ -516,7 +424,7 @@ pipe_read :: proc(
 @(require_results)
 fd_redirect :: proc(fd: posix.FD, newfd: posix.FD, loc: Loc) -> (err: Internal_Error) {
     if posix.dup2(fd, newfd) == FAIL {
-        return Fd_Redirect_Failed{posix.errno(), .File, fd, newfd}
+        return Internal_Error.Fd_Redirect_Failed
     }
     return nil
 }
@@ -524,12 +432,8 @@ fd_redirect :: proc(fd: posix.FD, newfd: posix.FD, loc: Loc) -> (err: Internal_E
 @(require_results)
 fd_close :: proc(fd: posix.FD, loc: Loc) -> (err: Internal_Error) {
     if posix.close(fd) == .FAIL {
-        return Fd_Close_Failed{posix.errno(), .File}
+        return Internal_Error.Fd_Close_Failed
     }
     return nil
-}
-
-strerror :: proc(errno: Errno) -> string {
-    return string(posix.strerror(errno))
 }
 

@@ -5,7 +5,6 @@ package subprocess
 import "base:intrinsics"
 import "base:runtime"
 import "core:log"
-import "core:reflect"
 import "core:time"
 
 
@@ -34,7 +33,9 @@ Error :: union #shared_nil {
     Internal_Error,
 }
 
-General_Error :: union {
+General_Error :: enum u8 {
+    None = 0,
+
     // `program_check`, `run_prog_*_checked`
     Program_Not_Found,
 
@@ -47,96 +48,23 @@ General_Error :: union {
     Spawn_Failed,
 }
 
-Program_Not_Found :: struct {
-    name: string,
-}
-
-Process_Cannot_Exit :: struct {
-    handle: Process_Handle,
-    errno:  Errno,
-}
-
-Program_Not_Executed :: struct {
-    handle: Process_Handle,
-    name:   string,
-}
-
-Program_Execution_Failed :: struct {
-    errno: Errno,
-    name:  string,
-}
-
-Spawn_Failed :: struct {
-    errno: Errno,
-}
-
 Process_Tracker_Error :: _Process_Tracker_Error
 
 Internal_Error :: _Internal_Error
 
-error_str :: proc(self: Error, alloc := context.temp_allocator) -> string {
-    context.allocator = alloc
-    switch v in self {
-    case General_Error:
-        return general_error_str(v)
-    case Process_Tracker_Error:
-        return process_tracker_error_str(v)
-    case Internal_Error:
-        return internal_error_str(v)
+// DOCS:
+// ```
+// result, err := run_prog_sync("command")
+// // or ...
+// result = unwrap(run_prog_sync("command")) // prints the error using `log_error`
+// ```
+unwrap :: proc(ret: $T, err: Error, loc := #caller_location) -> (res: T, ok: bool) #optional_ok {
+    if err != nil {
+        log_error(err, loc = loc)
+        ok = false
+        return
     }
-    unreachable()
-}
-
-// DOCS: Gets the variant of a union and if its variant is another union, it will get its variant and so on.
-// Example:
-// ```
-// e: Error = Internal_Error(Fd_Close_Failed{})
-// fmt.println(union_last_variant(e))
-// ```
-// Will output:
-// ```
-// Fd_Close_Failed
-// ```
-union_last_variant :: proc(uni: $T) -> typeid where intrinsics.type_is_union(T) {
-    if uni == nil {
-        return nil
-    }
-
-    cur_type_info := reflect.union_variant_type_info(uni)
-    for {
-        #partial switch v in runtime.type_info_base(cur_type_info).variant {
-        case runtime.Type_Info_Union:
-            tag_ptr := any{rawptr(uintptr(any(uni).data) + v.tag_offset), v.tag_type.id}
-            tag: i64
-            switch i in tag_ptr {
-            case u8:
-                tag = i64(i)
-            case i8:
-                tag = i64(i)
-            case u16:
-                tag = i64(i)
-            case i16:
-                tag = i64(i)
-            case u32:
-                tag = i64(i)
-            case i32:
-                tag = i64(i)
-            case u64:
-                tag = i64(i)
-            case i64:
-                tag = i
-            case:
-                unimplemented()
-            }
-            if !v.no_nil && tag != 0 {
-                tag -= 1
-            }
-            cur_type_info = v.variants[tag]
-        case:
-            return cur_type_info.id
-        }
-    }
-    unreachable()
+    return ret, true
 }
 
 
@@ -191,10 +119,9 @@ Process_Exit :: _Process_Exit
 Process_Handle :: _Process_Handle
 
 Process :: struct {
-    using _impl:     _Process,
-    handle:          Process_Handle,
-    execution_time:  time.Time,
-    executable_name: string,
+    using _impl:    _Process,
+    handle:         Process_Handle,
+    execution_time: time.Time,
 }
 
 process_wait :: proc(
@@ -307,7 +234,7 @@ run_prog_async_checked :: proc(
     err: Error,
 ) {
     if !prog.found {
-        err = General_Error(Program_Not_Found{prog.name})
+        err = General_Error.Program_Not_Found
         return
     }
     return _run_prog_async_unchecked(prog.name, args, option, loc)
@@ -339,7 +266,7 @@ run_prog_sync_checked :: proc(
     err: Error,
 ) {
     if !prog.found {
-        err = General_Error(Program_Not_Found{prog.name})
+        err = General_Error.Program_Not_Found
         return
     }
     process := run_prog_async_unchecked(prog.name, args, option, loc) or_return
@@ -348,22 +275,22 @@ run_prog_sync_checked :: proc(
 
 
 // DOCS: tell the user to manually init and destroy process tracker if they want to store process log
-process_tracker_init :: proc() -> (err: Process_Tracker_Error) {
+process_tracker_init :: proc() -> Error {
     if g_process_tracker_initialised {
-        return
+        return nil
     }
-    err = _process_tracker_init()
+    err := _process_tracker_init()
     g_process_tracker_initialised = err == nil
-    return
+    return nil
 }
 
-process_tracker_destroy :: proc() -> (err: Process_Tracker_Error) {
+process_tracker_destroy :: proc() -> Error {
     if !g_process_tracker_initialised {
-        return
+        return nil
     }
-    err = _process_tracker_destroy()
+    err := _process_tracker_destroy()
     g_process_tracker_initialised = err != nil
-    return
+    return nil
 }
 
 
@@ -380,19 +307,13 @@ program :: proc($name: string, loc := #caller_location) -> Program {
 }
 
 @(require_results)
-program_check :: proc(
-    $name: string,
-    loc := #caller_location,
-) -> (
-    prog: Program,
-    err: General_Error,
-) {
+program_check :: proc($name: string, loc := #caller_location) -> (prog: Program, err: Error) {
     flags_temp := g_flags
     disable_default_flags({.Echo_Commands, .Echo_Commands_Debug})
     found := _program(name, loc)
     g_flags = flags_temp
     if !found {
-        err = Program_Not_Found{name}
+        err = General_Error.Program_Not_Found
     }
     return {name = name, found = found}, err
 }
