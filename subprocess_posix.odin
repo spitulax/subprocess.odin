@@ -284,7 +284,7 @@ pipe_read :: proc(
             resize(&buf, 2 * len(buf))
         }
     }
-    result = strings.clone_from_bytes(buf[:total_bytes_read], alloc)
+    result = strings.clone_from_bytes(buf[:total_bytes_read], alloc, loc)
     return
 }
 

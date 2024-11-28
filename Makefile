@@ -17,4 +17,4 @@ test:
 	odin test tests $(ARGS) -define:REPO_ROOT=$(REPO_ROOT)
 
 demo:
-	make -C $(REPO_ROOT)/demos run
+	make -B -C $(REPO_ROOT)/demos run

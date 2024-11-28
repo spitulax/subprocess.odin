@@ -138,14 +138,12 @@ ansi_reset_str :: proc() -> string {
 }
 
 ansi_graphic_str :: proc(options: ..string, alloc := context.allocator) -> string {
-    runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD(context.temp_allocator == alloc)
-    return fmt.aprint(
-        ansi.CSI,
-        concat_string_sep(options, ";", context.temp_allocator),
-        ansi.SGR,
-        sep = "",
-        allocator = alloc,
-    )
+    sb := strings.builder_make()
+    defer strings.builder_destroy(&sb)
+    fmt.sbprint(&sb, ansi.CSI)
+    append_concat_string_sep(strings.to_writer(&sb), options, ";")
+    fmt.sbprint(&sb, ansi.SGR)
+    return strings.clone(strings.to_string(sb), alloc)
 }
 
 concat_string_sep :: proc(strs: []string, sep: string, alloc := context.allocator) -> string {
@@ -158,5 +156,14 @@ concat_string_sep :: proc(strs: []string, sep: string, alloc := context.allocato
         fmt.sbprint(&sb, str)
     }
     return strings.clone(strings.to_string(sb), alloc)
+}
+
+append_concat_string_sep :: proc(w: io.Writer, strs: []string, sep: string) {
+    for str, i in strs {
+        if i > 0 {
+            fmt.wprint(w, sep)
+        }
+        fmt.wprint(w, str)
+    }
 }
 
