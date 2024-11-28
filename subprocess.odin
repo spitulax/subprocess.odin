@@ -26,9 +26,6 @@ Flags_Set :: bit_set[Flags]
 Error :: union #shared_nil {
     General_Error,
 
-    // `process_tracker_init*`
-    Process_Tracker_Error,
-
     // Target specific stuff
     Internal_Error,
 }
@@ -47,8 +44,6 @@ General_Error :: enum u8 {
     // `run_prog*`
     Spawn_Failed,
 }
-
-Process_Tracker_Error :: _Process_Tracker_Error
 
 Internal_Error :: _Internal_Error
 
@@ -146,21 +141,16 @@ process_wait_many :: proc(
     alloc := context.allocator,
     loc := #caller_location,
 ) -> (
-    results: []Process_Result,
-    errs: []Error,
-    ok: bool,
+    res: #soa[]struct {
+        result: Process_Result,
+        err:    Error,
+    },
 ) {
-    ok = true
-    defer if !ok {
-        results = nil
-    }
-    results = make([]Process_Result, len(selves), alloc, loc)
-    errs = make([]Error, len(selves), alloc, loc)
+    res = make_soa_slice(type_of(res), len(selves), alloc, loc)
     for process, i in selves {
         process_result, process_err := process_wait(process, alloc, loc)
-        ok &&= (process_err != nil)
-        results[i] = process_result
-        errs[i] = process_err
+        res[i].result = process_result
+        res[i].err = process_err
     }
     return
 }
@@ -271,26 +261,6 @@ run_prog_sync_checked :: proc(
     }
     process := run_prog_async_unchecked(prog.name, args, option, loc) or_return
     return process_wait(process, alloc, loc)
-}
-
-
-// DOCS: tell the user to manually init and destroy process tracker if they want to store process log
-process_tracker_init :: proc() -> Error {
-    if g_process_tracker_initialised {
-        return nil
-    }
-    err := _process_tracker_init()
-    g_process_tracker_initialised = err == nil
-    return nil
-}
-
-process_tracker_destroy :: proc() -> Error {
-    if !g_process_tracker_initialised {
-        return nil
-    }
-    err := _process_tracker_destroy()
-    g_process_tracker_initialised = err != nil
-    return nil
 }
 
 

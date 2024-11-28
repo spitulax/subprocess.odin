@@ -6,34 +6,16 @@ import "core:encoding/ansi"
 import "core:fmt"
 import "core:io"
 import "core:log"
-import "core:mem"
-import "core:mem/virtual"
 import "core:strings"
-import "core:sync"
 
 
 g_flags: Flags_Set
-// TODO: maybe use pipes
-g_process_tracker: ^Process_Tracker
-g_process_tracker_initialised: bool
-g_process_tracker_mutex: ^sync.Mutex
-g_shared_mem: rawptr
-SHARED_MEM_SIZE :: 1 * mem.Megabyte
-g_shared_mem_size: uint
-g_shared_mem_arena: virtual.Arena
-g_shared_mem_allocator: Alloc
 
 
+EARLY_EXIT_CODE :: 211
 Alloc :: runtime.Allocator
 Loc :: runtime.Source_Code_Location
 Default_Logger_Opts :: log.Options{.Short_File_Path, .Line}
-
-
-Process_Tracker :: map[Process_Handle]^Process_Status
-Process_Status :: struct {
-    has_run: bool,
-    log:     strings.Builder,
-}
 
 
 log_header :: proc(
@@ -140,6 +122,7 @@ ansi_reset_writer :: proc(writer: io.Writer) {
 }
 
 ansi_graphic_writer :: proc(writer: io.Writer, options: ..string) {
+    runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
     fmt.wprint(
         writer,
         ansi.CSI,
@@ -155,6 +138,7 @@ ansi_reset_str :: proc() -> string {
 }
 
 ansi_graphic_str :: proc(options: ..string, alloc := context.allocator) -> string {
+    runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD(context.temp_allocator == alloc)
     return fmt.aprint(
         ansi.CSI,
         concat_string_sep(options, ";", context.temp_allocator),
@@ -174,50 +158,5 @@ concat_string_sep :: proc(strs: []string, sep: string, alloc := context.allocato
         fmt.sbprint(&sb, str)
     }
     return strings.clone(strings.to_string(sb), alloc)
-}
-
-
-Process_Logger_Data :: struct {
-    builder: ^strings.Builder,
-    mutex:   Maybe(^sync.Mutex),
-}
-
-create_process_logger :: proc(
-    builder: ^strings.Builder,
-    alloc := context.allocator,
-    mutex: Maybe(^sync.Mutex),
-) -> log.Logger {
-    assert(builder != nil)
-
-    process_logger_proc :: proc(
-        logger_data: rawptr,
-        level: log.Level,
-        text: string,
-        options: log.Options,
-        loc: Loc,
-    ) {
-        data := cast(^Process_Logger_Data)logger_data
-        mutex, mutex_ok := data.mutex.?
-        if mutex_ok {
-            sync.mutex_lock(mutex)
-        } else {
-            return
-        }
-        defer if mutex_ok {
-            sync.mutex_unlock(mutex)
-        }
-        log_header(data.builder, level, true, loc, ansi.BG_BRIGHT_BLACK)
-        ansi_graphic(strings.to_writer(data.builder), ansi.BG_BRIGHT_BLACK)
-        fmt.sbprintf(data.builder, text)
-        ansi_reset(strings.to_writer(data.builder))
-    }
-
-    // NOTE: I only intend to allocate this to the shared arena for now
-    data := new(Process_Logger_Data, alloc)
-    data^ = Process_Logger_Data {
-        builder = builder,
-        mutex   = mutex,
-    }
-    return log.Logger{process_logger_proc, data, log.Level.Debug, Default_Logger_Opts}
 }
 

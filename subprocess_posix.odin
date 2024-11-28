@@ -2,14 +2,10 @@
 #+private
 package subprocess
 
-import "core:c/libc"
+import "base:runtime"
 import "core:fmt"
-import "core:log"
-import "core:mem"
-import "core:mem/virtual"
-import "core:slice"
+import "core:os"
 import "core:strings"
-import "core:sync"
 import "core:sys/posix"
 import "core:time"
 
@@ -53,25 +49,6 @@ _process_wait :: proc(
         }
         result.duration = time.since(self.execution_time)
 
-        current: ^Process_Status
-        child_appended: bool
-        if g_process_tracker_initialised {
-            if sync.mutex_guard(g_process_tracker_mutex) {
-                if len(g_process_tracker^) <= 0 {
-                    child_appended = false
-                } else {
-                    current = g_process_tracker[self.handle]
-                    child_appended = true
-                }
-            }
-        }
-
-        defer if g_process_tracker_initialised {
-            if sync.mutex_guard(g_process_tracker_mutex) {
-                delete_key(g_process_tracker, self.handle)
-            }
-        }
-
         if posix.WIFSIGNALED(status) || posix.WIFEXITED(status) {
             stdout_pipe, stdout_pipe_ok := self.stdout_pipe.?
             stderr_pipe, stderr_pipe_ok := self.stderr_pipe.?
@@ -86,18 +63,8 @@ _process_wait :: proc(
                 pipe_close_read(&stderr_pipe, loc) or_return
             }
 
-            if g_process_tracker_initialised {
-                if !(child_appended && sync.atomic_load(&current.has_run)) {     // short-circuit evaluation
-                    err = General_Error.Program_Not_Executed
-                }
-                if child_appended {
-                    if sync.mutex_guard(g_process_tracker_mutex) {
-                        log = strings.to_string(current.log)
-                        if len(log.?) <= 0 {
-                            log = nil
-                        }
-                    }
-                }
+            if posix.WEXITSTATUS(status) == EARLY_EXIT_CODE {
+                err = General_Error.Program_Not_Executed
             }
         }
 
@@ -135,6 +102,7 @@ _run_prog_async_unchecked :: proc(
         pipe_init(&stderr_pipe, loc) or_return
     }
 
+    runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
     argv := make([dynamic]cstring, 0, len(args) + 3)
     append(&argv, "/usr/bin/env")
     append(&argv, fmt.ctprint(prog))
@@ -164,77 +132,36 @@ _run_prog_async_unchecked :: proc(
     }
 
     if child_pid == 0 {
-        wrap :: proc(err: Error, loc: Loc) {
+        wrap :: proc(err: Error) {
             if err != nil {
-                log_fatal(err, loc = loc)
-                posix.exit(1)
+                // TODO: very naïve way to do this
+                os.exit(EARLY_EXIT_CODE)
             }
         }
 
-        pid := posix.getpid()
-        current: ^Process_Status
-        logger: log.Logger
-        if g_process_tracker_initialised {
-            status := new(Process_Status, g_shared_mem_allocator)
-            _, builder_err := strings.builder_init_len_cap(
-                &status.log,
-                0,
-                1024,
-                g_shared_mem_allocator,
-            )
-            assert(builder_err == .None)
-            if sync.mutex_guard(g_process_tracker_mutex) {
-                assert(g_process_tracker != nil || g_process_tracker_mutex != nil)
-                current = map_insert(g_process_tracker, pid, status)^
-                logger = create_process_logger(
-                    &current.log,
-                    g_shared_mem_allocator,
-                    g_process_tracker_mutex,
-                )
-            }
-        } else {
-            logger = log.Logger {
-                proc(_: rawptr, _: log.Level, _: string, _: log.Options, _: Loc) {},
-                nil,
-                log.Level.Debug,
-                {},
-            }
-        }
-        context.logger = logger
-        enable_default_flags({.Use_Context_Logger})
-
-        // TODO: how to handle errors the new way here?
         switch option {
         case .Share:
             break
         case .Silent:
-            wrap(fd_redirect(dev_null, posix.STDOUT_FILENO, loc), loc)
-            wrap(fd_redirect(dev_null, posix.STDERR_FILENO, loc), loc)
-            wrap(fd_redirect(dev_null, posix.STDIN_FILENO, loc), loc)
-            wrap(fd_close(dev_null, loc), loc)
+            wrap(fd_redirect(dev_null, posix.STDOUT_FILENO, loc))
+            wrap(fd_redirect(dev_null, posix.STDERR_FILENO, loc))
+            wrap(fd_redirect(dev_null, posix.STDIN_FILENO, loc))
+            wrap(fd_close(dev_null, loc))
         case .Capture:
-            wrap(pipe_close_read(&stdout_pipe, loc), loc)
-            wrap(pipe_close_read(&stderr_pipe, loc), loc)
+            wrap(pipe_close_read(&stdout_pipe, loc))
+            wrap(pipe_close_read(&stderr_pipe, loc))
 
-            wrap(pipe_redirect(&stdout_pipe, posix.STDOUT_FILENO, loc), loc)
-            wrap(pipe_redirect(&stderr_pipe, posix.STDERR_FILENO, loc), loc)
-            wrap(fd_redirect(dev_null, posix.STDIN_FILENO, loc), loc)
+            wrap(pipe_redirect(&stdout_pipe, posix.STDOUT_FILENO, loc))
+            wrap(pipe_redirect(&stderr_pipe, posix.STDERR_FILENO, loc))
+            wrap(fd_redirect(dev_null, posix.STDIN_FILENO, loc))
 
-            wrap(pipe_close_write(&stdout_pipe, loc), loc)
-            wrap(pipe_close_write(&stderr_pipe, loc), loc)
-            wrap(fd_close(dev_null, loc), loc)
+            wrap(pipe_close_write(&stdout_pipe, loc))
+            wrap(pipe_close_write(&stderr_pipe, loc))
+            wrap(fd_close(dev_null, loc))
         }
 
-        if g_process_tracker_initialised {
-            _, exch_ok := sync.atomic_compare_exchange_strong(&current.has_run, false, true)
-            assert(exch_ok)
-        }
         if posix.execve(argv[0], raw_data(argv), posix.environ) == FAIL {
-            if g_process_tracker_initialised {
-                _, exch_ok := sync.atomic_compare_exchange_strong(&current.has_run, true, false)
-                assert(exch_ok)
-            }
-            wrap(General_Error.Program_Execution_Failed, loc)
+            wrap(General_Error.Program_Not_Executed)
         }
         unreachable()
     }
@@ -244,7 +171,7 @@ _run_prog_async_unchecked :: proc(
         fd_close(dev_null, loc) or_return
     }
 
-    delete(argv, loc = loc)
+    delete(argv)
     maybe_stdout_pipe: Maybe(Pipe) = (option == .Capture) ? stdout_pipe : nil
     maybe_stderr_pipe: Maybe(Pipe) = (option == .Capture) ? stderr_pipe : nil
     return Process {
@@ -254,62 +181,6 @@ _run_prog_async_unchecked :: proc(
             stderr_pipe = maybe_stderr_pipe,
         },
         err
-}
-
-
-_Process_Tracker_Error :: enum u8 {
-    None = 0,
-    Mmap_Failed,
-    Unmap_Failed,
-    Arena_Init_Failed,
-}
-
-// DOCS: do not manually call `_process_tracker_init`
-_process_tracker_init :: proc() -> Error {
-    g_shared_mem = posix.mmap(
-        rawptr(uintptr(0)),
-        SHARED_MEM_SIZE,
-        {.READ, .WRITE},
-        {.SHARED, .ANONYMOUS},
-    )
-    if g_shared_mem == posix.MAP_FAILED {
-        return Process_Tracker_Error.Mmap_Failed
-    }
-
-    arena_err := virtual.arena_init_buffer(
-        &g_shared_mem_arena,
-        slice.bytes_from_ptr(g_shared_mem, SHARED_MEM_SIZE),
-    )
-    if arena_err != .None {
-        return Process_Tracker_Error.Arena_Init_Failed
-    }
-    context.allocator = virtual.arena_allocator(&g_shared_mem_arena)
-    g_shared_mem_allocator = context.allocator
-
-    g_process_tracker = new(Process_Tracker)
-    _ = reserve(g_process_tracker, 128)
-
-    // yep
-    process_tracker_mutex := sync.Mutex{}
-    process_tracker_mutex_rawptr, _ := mem.alloc(size_of(sync.Mutex))
-    g_process_tracker_mutex =
-    cast(^sync.Mutex)libc.memmove(
-        process_tracker_mutex_rawptr,
-        &process_tracker_mutex,
-        size_of(sync.Mutex),
-    )
-
-    return nil
-}
-
-// DOCS: do not manually call `_process_tracker_destroy`
-_process_tracker_destroy :: proc() -> Error {
-    if g_shared_mem != nil {
-        if posix.munmap(g_shared_mem, SHARED_MEM_SIZE) == .FAIL {
-            return Process_Tracker_Error.Unmap_Failed
-        }
-    }
-    return nil
 }
 
 

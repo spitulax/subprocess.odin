@@ -14,7 +14,7 @@
   "enable_checker_only_saved": false,
   "disable_parser_errors": false,
   "verbose": true,
-  "checker_args": "-vet -disallow-do -warnings-as-errors -no-entry-point",
+  "checker_args": "-vet -disallow-do -warnings-as-errors",
 
   "profile": "default",
   "profiles": [
