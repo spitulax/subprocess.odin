@@ -13,7 +13,6 @@ import "core:time"
 
 POSIX_OS :: OS_Set{.Linux, .Darwin, .FreeBSD, .OpenBSD, .NetBSD} // use implementations from `subprocess_posix.odin`
 SUPPORTED_OS :: POSIX_OS
-#assert(ODIN_OS in SUPPORTED_OS)
 
 
 Flags :: enum {
