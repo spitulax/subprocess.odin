@@ -82,6 +82,7 @@ _process_wait :: proc(
 }
 
 
+// TODO: make sending to stdin without user input possible
 _run_prog_async_unchecked :: proc(
     prog: $string,
     args: []string,
@@ -93,29 +94,30 @@ _run_prog_async_unchecked :: proc(
 ) {
     stdout_pipe, stderr_pipe: Pipe
     dev_null: posix.FD
-    if option == .Capture || option == .Silent {
+
+    if option == .Silent {
         dev_null = posix.open("/dev/null", {.RDWR, .CREAT}, {.IWUSR, .IWGRP, .IWOTH})
         assert(posix.errno() == .NONE, "could not open /dev/null")
-    }
-    if option == .Capture {
+    } else if option == .Capture {
         pipe_init(&stdout_pipe, loc) or_return
         pipe_init(&stderr_pipe, loc) or_return
     }
 
     runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
-    argv := make([dynamic]cstring, 0, len(args) + 3)
-    append(&argv, "/usr/bin/env")
-    append(&argv, fmt.ctprint(prog))
-    for arg in args {
-        append(&argv, fmt.ctprintf("%s", arg))
+    argv := make([]cstring, len(args) + 3)
+    argv[0] = "/usr/bin/env"
+    argv[1] = fmt.ctprint(prog)
+    for &arg, i in args {
+        argv[i + 2] = fmt.ctprintf("%s", arg)
     }
-    append(&argv, nil)
+    argv[len(argv) - 1] = nil
 
     if g_flags & {.Echo_Commands, .Echo_Commands_Debug} != {} {
         msg := fmt.tprintf(
             "(%v) %s %s",
             option,
             prog,
+            // TODO: args is unescaped
             concat_string_sep(args, " ", context.temp_allocator),
         )
         if .Echo_Commands in g_flags {
@@ -145,7 +147,6 @@ _run_prog_async_unchecked :: proc(
         case .Silent:
             wrap(fd_redirect(dev_null, posix.STDOUT_FILENO, loc))
             wrap(fd_redirect(dev_null, posix.STDERR_FILENO, loc))
-            wrap(fd_redirect(dev_null, posix.STDIN_FILENO, loc))
             wrap(fd_close(dev_null, loc))
         case .Capture:
             wrap(pipe_close_read(&stdout_pipe, loc))
@@ -153,11 +154,9 @@ _run_prog_async_unchecked :: proc(
 
             wrap(pipe_redirect(&stdout_pipe, posix.STDOUT_FILENO, loc))
             wrap(pipe_redirect(&stderr_pipe, posix.STDERR_FILENO, loc))
-            wrap(fd_redirect(dev_null, posix.STDIN_FILENO, loc))
 
             wrap(pipe_close_write(&stdout_pipe, loc))
             wrap(pipe_close_write(&stderr_pipe, loc))
-            wrap(fd_close(dev_null, loc))
         }
 
         if posix.execve(argv[0], raw_data(argv), posix.environ) == FAIL {
@@ -167,7 +166,7 @@ _run_prog_async_unchecked :: proc(
     }
     execution_time := time.now()
 
-    if option == .Capture || option == .Silent {
+    if option == .Silent {
         fd_close(dev_null, loc) or_return
     }
 
