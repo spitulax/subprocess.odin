@@ -34,7 +34,6 @@ _process_wait :: proc(
     loc: Loc,
 ) -> (
     result: Process_Result,
-    log: Maybe(string),
     err: Error,
 ) {
     defer if err != nil {
