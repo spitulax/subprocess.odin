@@ -1,5 +1,9 @@
 package subprocess
 
+// TODO: Add command builder
+// TODO: Specify additional environment variable in `run_*` functions
+// TODO: Support Windows
+// TODO: Make sending to stdin without user input possible
 // MAYBE: Add a function that invokes the respective system's shell like libc's `system()`
 
 import "base:intrinsics"
@@ -9,7 +13,6 @@ import "core:time"
 
 
 OS_Set :: bit_set[runtime.Odin_OS_Type]
-// TODO: update this
 POSIX_OS :: OS_Set{.Linux, .Darwin, .FreeBSD, .OpenBSD, .NetBSD} // use implementations from `subprocess_posix.odin`
 SUPPORTED_OS :: POSIX_OS
 #assert(ODIN_OS in SUPPORTED_OS)
@@ -127,12 +130,7 @@ process_wait :: proc(
     result: Process_Result,
     err: Error,
 ) {
-    log: Maybe(string)
-    result, log, err = _process_wait(self, alloc, loc)
-    // TODO: return the string instead of printing it
-    if log != nil {
-        log_infof("Log from %v:\n%s", self.handle, log.?, loc = loc)
-    }
+    result, err = _process_wait(self, alloc, loc)
     return
 }
 
@@ -184,7 +182,6 @@ process_result_destroy_many :: proc(
 }
 
 
-// FIXME: *some* programs that read from stdin may hang if called with .Silent or .Capture
 Run_Prog_Option :: enum {
     Share,
     Silent,

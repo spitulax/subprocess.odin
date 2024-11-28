@@ -81,7 +81,6 @@ _process_wait :: proc(
 }
 
 
-// TODO: make sending to stdin without user input possible
 _run_prog_async_unchecked :: proc(
     prog: $string,
     args: []string,
