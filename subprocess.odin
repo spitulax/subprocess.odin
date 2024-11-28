@@ -1,6 +1,5 @@
 package subprocess
 
-// TODO: Add command builder
 // TODO: Specify additional environment variable in `run_*` functions
 // TODO: Support Windows
 // TODO: Make sending to stdin without user input possible
@@ -63,6 +62,7 @@ unwrap :: proc(ret: $T, err: Error, loc := #caller_location) -> (res: T, ok: boo
 }
 
 
+@(require_results)
 create_logger :: proc() -> log.Logger {
     logger_proc :: proc(
         logger_data: rawptr,
@@ -279,10 +279,238 @@ program_check :: proc($name: string, loc := #caller_location) -> (prog: Program,
     if !found {
         err = General_Error.Program_Not_Found
     }
-    return {name = name, found = found}, err
+    return Program{found, name}, err
 }
 
 
+Command :: struct {
+    prog:              Program,
+    args:              [dynamic]string,
+    results:           [dynamic]Process_Result,
+    running_processes: [dynamic]Process,
+    alloc:             Alloc,
+}
+
+command_make :: proc {
+    command_make_none,
+    command_make_len,
+    command_make_len_cap,
+    command_make_prog_none,
+    command_make_prog_len,
+    command_make_prog_len_cap,
+}
+
+@(private)
+_command_make :: proc(prog: Program, len, cap: int, alloc: Alloc, loc: Loc) -> Command {
+    return Command {
+        prog = prog,
+        args = make([dynamic]string, len, cap, alloc, loc),
+        results = make([dynamic]Process_Result, alloc, loc),
+        running_processes = make([dynamic]Process, alloc, loc),
+        alloc = alloc,
+    }
+}
+
+@(require_results)
+command_make_none :: proc(
+    $prog_name: string,
+    alloc := context.allocator,
+    loc := #caller_location,
+) -> (
+    res: Command,
+    err: Error,
+) {
+    return _command_make(program_check(prog_name, loc) or_return, 0, 0, alloc, loc), nil
+}
+
+@(require_results)
+command_make_len :: proc(
+    $prog_name: string,
+    len: int,
+    alloc := context.allocator,
+    loc := #caller_location,
+) -> (
+    res: Command,
+    err: Error,
+) {
+    return _command_make(program_check(prog_name, loc) or_return, len, len, alloc, loc), nil
+}
+
+@(require_results)
+command_make_len_cap :: proc(
+    $prog_name: string,
+    len, cap: int,
+    alloc := context.allocator,
+    loc := #caller_location,
+) -> (
+    res: Command,
+    err: Error,
+) {
+    return _command_make(program_check(prog_name, loc) or_return, len, cap, alloc, loc), nil
+}
+
+@(require_results)
+command_make_prog_none :: proc(
+    prog: Program,
+    alloc := context.allocator,
+    loc := #caller_location,
+) -> Command {
+    return _command_make(prog, 0, 0, alloc, loc)
+}
+
+@(require_results)
+command_make_prog_len :: proc(
+    prog: Program,
+    len: int,
+    alloc := context.allocator,
+    loc := #caller_location,
+) -> Command {
+    return _command_make(prog, len, len, alloc, loc)
+}
+
+@(require_results)
+command_make_prog_len_cap :: proc(
+    prog: Program,
+    len, cap: int,
+    alloc := context.allocator,
+    loc := #caller_location,
+) -> Command {
+    return _command_make(prog, len, cap, alloc, loc)
+}
+
+command_append :: proc {
+    command_append_one,
+    command_append_many,
+}
+
+command_append_one :: proc(self: ^Command, arg: string, loc := #caller_location) {
+    append(&self.args, arg, loc)
+}
+
+command_append_many :: proc(self: ^Command, args: ..string, loc := #caller_location) {
+    append(&self.args, ..args, loc = loc)
+}
+
+command_inject_at :: proc {
+    command_inject_one_at,
+    command_inject_many_at,
+}
+
+command_inject_one_at :: proc(self: ^Command, index: int, arg: string, loc := #caller_location) {
+    inject_at(&self.args, index, arg, loc)
+}
+
+command_inject_many_at :: proc(
+    self: ^Command,
+    index: int,
+    args: ..string,
+    loc := #caller_location,
+) {
+    inject_at(&self.args, index, ..args, loc = loc)
+}
+
+command_assign_at :: proc {
+    command_assign_one_at,
+    command_assign_many_at,
+}
+
+command_assign_one_at :: proc(self: ^Command, index: int, arg: string, loc := #caller_location) {
+    assign_at(&self.args, index, arg, loc)
+}
+
+command_assign_many_at :: proc(
+    self: ^Command,
+    index: int,
+    args: ..string,
+    loc := #caller_location,
+) {
+    assign_at(&self.args, index, ..args, loc = loc)
+}
+
+command_clear :: proc(self: ^Command) {
+    clear(&self.args)
+}
+
+command_wait_all :: proc(
+    self: ^Command,
+    alloc := context.allocator,
+    loc := #caller_location,
+) -> (
+    res: #soa[]struct {
+        result: ^Process_Result,
+        err:    Error,
+    },
+) {
+    res = make_soa_slice(type_of(res), len(self.running_processes), alloc, loc)
+    for process, i in self.running_processes {
+        process_result, process_err := process_wait(process, self.alloc, loc)
+        append(&self.results, process_result, loc)
+        res[i].result = &self.results[len(self.results) - 1]
+        res[i].err = process_err
+    }
+    clear(&self.running_processes)
+    return
+}
+
+command_destroy :: proc(self: ^Command, loc := #caller_location) -> Error {
+    command_destroy_results(self, loc)
+
+    {
+        res := command_wait_all(self)
+        defer delete(res)
+        for x in res {
+            if x.err != nil {
+                return x.err
+            }
+        }
+    }
+
+    delete(self.args, loc)
+    delete(self.results, loc)
+    delete(self.running_processes, loc)
+
+    return nil
+}
+
+command_destroy_results :: proc(self: ^Command, loc := #caller_location) {
+    process_result_destroy_many(self.results[:], self.alloc, loc)
+    clear(&self.results)
+}
+
+command_run_sync :: proc(
+    self: ^Command,
+    option: Run_Prog_Option = .Share,
+    loc := #caller_location,
+) -> (
+    result: ^Process_Result,
+    err: Error,
+) {
+    append(
+        &self.results,
+        run_prog_sync(self.prog, self.args[:], option, self.alloc, loc) or_return,
+        loc,
+    )
+    return &self.results[len(self.results) - 1], nil
+}
+
+command_run_async :: proc(
+    self: ^Command,
+    option: Run_Prog_Option = .Share,
+    loc := #caller_location,
+) -> (
+    process: ^Process,
+    err: Error,
+) {
+    append(
+        &self.running_processes,
+        run_prog_async(self.prog, self.args[:], option, loc) or_return,
+        loc,
+    )
+    return &self.running_processes[len(self.running_processes) - 1], nil
+}
+
+
+@(require_results)
 default_flags :: proc() -> Flags_Set {
     return g_flags
 }
