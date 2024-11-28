@@ -453,8 +453,8 @@ command_wait_all :: proc(
 }
 
 command_destroy :: proc(self: ^Command, loc := #caller_location) -> Error {
+    command_clear(self)
     command_destroy_results(self, loc)
-
     {
         res := command_wait_all(self)
         defer delete(res)
