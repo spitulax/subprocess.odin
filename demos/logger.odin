@@ -1,4 +1,4 @@
-package logger
+package demos
 
 import lib ".."
 import "core:log"

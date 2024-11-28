@@ -1,5 +1,5 @@
 # Interesting flags
-# NAME=hello.odin
+# NAME=<demo name> (example: hello.odin)
 # DEBUG=0, DEBUG=1
 
 BUILD_DIR := ./build
