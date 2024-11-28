@@ -3,7 +3,7 @@ package demos
 import lib ".."
 
 main :: proc() {
-    lib.enable_default_flags({.Echo_Commands_Debug})
+    lib.default_flags_enable({.Echo_Commands_Debug})
 
     sh: lib.Program
     when ODIN_OS in lib.POSIX_OS {

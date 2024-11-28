@@ -10,7 +10,7 @@ RATS_DIR :: REPO_ROOT + "/" + ODIN_BUILD_PROJECT_NAME + "/rats/compiler"
 
 @(test)
 compiler :: proc(t: ^testing.T) {
-    lib.enable_default_flags({.Use_Context_Logger, .Echo_Commands})
+    lib.default_flags_enable({.Use_Context_Logger, .Echo_Commands})
 
     sh := lib.program("sh")
     cc := lib.program("cc")

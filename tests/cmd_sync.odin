@@ -7,7 +7,7 @@ import "core:time"
 
 @(test)
 cmd_sync :: proc(t: ^testing.T) {
-    lib.enable_default_flags({.Use_Context_Logger, .Echo_Commands})
+    lib.default_flags_enable({.Use_Context_Logger, .Echo_Commands})
 
     before := time.now()
     results: [10]lib.Process_Result

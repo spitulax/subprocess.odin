@@ -7,12 +7,10 @@ package subprocess
 // MAYBE: Add a function that invokes the respective system's shell like libc's `system()`
 
 import "base:intrinsics"
-import "base:runtime"
 import "core:log"
 import "core:time"
 
 
-OS_Set :: bit_set[runtime.Odin_OS_Type]
 POSIX_OS :: OS_Set{.Linux, .Darwin, .FreeBSD, .OpenBSD, .NetBSD} // use implementations from `subprocess_posix.odin`
 SUPPORTED_OS :: POSIX_OS
 #assert(ODIN_OS in SUPPORTED_OS)
@@ -276,7 +274,7 @@ program :: proc($name: string, loc := #caller_location) -> Program {
 @(require_results)
 program_check :: proc($name: string, loc := #caller_location) -> (prog: Program, err: Error) {
     flags_temp := g_flags
-    disable_default_flags({.Echo_Commands, .Echo_Commands_Debug})
+    default_flags_disable({.Echo_Commands, .Echo_Commands_Debug})
     found := _program(name, loc)
     g_flags = flags_temp
     if !found {
@@ -286,19 +284,19 @@ program_check :: proc($name: string, loc := #caller_location) -> (prog: Program,
 }
 
 
-get_default_flags :: proc() -> Flags_Set {
+default_flags :: proc() -> Flags_Set {
     return g_flags
 }
 
-set_default_flags :: proc(flags: Flags_Set) {
+default_flags_set :: proc(flags: Flags_Set) {
     g_flags = flags
 }
 
-enable_default_flags :: proc(flags: Flags_Set) {
+default_flags_enable :: proc(flags: Flags_Set) {
     g_flags += flags
 }
 
-disable_default_flags :: proc(flags: Flags_Set) {
+default_flags_disable :: proc(flags: Flags_Set) {
     g_flags -= flags
 }
 

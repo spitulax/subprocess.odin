@@ -5,7 +5,7 @@ import "core:testing"
 
 @(test)
 hello :: proc(t: ^testing.T) {
-    lib.enable_default_flags({.Use_Context_Logger, .Echo_Commands})
+    lib.default_flags_enable({.Use_Context_Logger, .Echo_Commands})
     sh := lib.program("sh")
 
     ok: bool
