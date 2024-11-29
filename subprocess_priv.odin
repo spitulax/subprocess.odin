@@ -168,3 +168,22 @@ append_concat_string_sep :: proc(w: io.Writer, strs: []string, sep: string) {
     }
 }
 
+
+print_cmd :: proc(option: Run_Prog_Option, prog: string, args: []string, loc: Loc) {
+    runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
+    if g_flags & {.Echo_Commands, .Echo_Commands_Debug} != {} {
+        msg := fmt.tprintf(
+            "(%v) %s %s",
+            option,
+            prog,
+            // TODO: args is unescaped
+            concat_string_sep(args, " ", context.temp_allocator),
+        )
+        if .Echo_Commands in g_flags {
+            log_info(msg, loc = loc)
+        } else if .Echo_Commands_Debug in g_flags {
+            log_debug(msg, loc = loc)
+        }
+    }
+}
+

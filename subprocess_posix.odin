@@ -13,19 +13,14 @@ import "core:time"
 FAIL :: -1
 
 
-_Exit :: distinct u32
-_Signal :: distinct posix.Signal
+Exit_Code :: distinct u32
+Signal :: distinct posix.Signal
 _Process_Exit :: union {
-    Exit,
+    Exit_Code,
     Signal,
 }
 _Process_Handle :: posix.pid_t
 
-
-_Process :: struct {
-    stdout_pipe: Maybe(Pipe),
-    stderr_pipe: Maybe(Pipe),
-}
 
 _process_wait :: proc(
     self: Process,
@@ -68,7 +63,7 @@ _process_wait :: proc(
 
         if posix.WIFEXITED(status) {
             exit_code := posix.WEXITSTATUS(status)
-            result.exit = (exit_code == 0) ? nil : Exit(exit_code)
+            result.exit = (exit_code == 0) ? nil : Exit_Code(exit_code)
             return
         }
 
@@ -89,7 +84,7 @@ _run_prog_async_unchecked :: proc(
     process: Process,
     err: Error,
 ) {
-    stdout_pipe, stderr_pipe: Pipe
+    stdout_pipe, stderr_pipe: _Pipe
     dev_null: posix.FD
 
     if option == .Silent {
@@ -109,20 +104,7 @@ _run_prog_async_unchecked :: proc(
     }
     argv[len(argv) - 1] = nil
 
-    if g_flags & {.Echo_Commands, .Echo_Commands_Debug} != {} {
-        msg := fmt.tprintf(
-            "(%v) %s %s",
-            option,
-            prog,
-            // TODO: args is unescaped
-            concat_string_sep(args, " ", context.temp_allocator),
-        )
-        if .Echo_Commands in g_flags {
-            log_info(msg, loc = loc)
-        } else if .Echo_Commands_Debug in g_flags {
-            log_debug(msg, loc = loc)
-        }
-    }
+    print_cmd(option, prog, args, loc)
 
     child_pid := posix.fork()
     if child_pid == FAIL {
@@ -168,8 +150,8 @@ _run_prog_async_unchecked :: proc(
     }
 
     delete(argv)
-    maybe_stdout_pipe: Maybe(Pipe) = (option == .Capture) ? stdout_pipe : nil
-    maybe_stderr_pipe: Maybe(Pipe) = (option == .Capture) ? stderr_pipe : nil
+    maybe_stdout_pipe: Maybe(_Pipe) = (option == .Capture) ? stdout_pipe : nil
+    maybe_stderr_pipe: Maybe(_Pipe) = (option == .Capture) ? stderr_pipe : nil
     return Process {
             handle = child_pid,
             execution_time = execution_time,
@@ -211,7 +193,7 @@ _Internal_Error :: enum u8 {
 }
 
 
-Pipe :: struct #raw_union {
+_Pipe :: struct #raw_union {
     array: Pipe_Both,
     struc: Pipe_Separate,
 }

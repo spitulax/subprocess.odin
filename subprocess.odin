@@ -108,15 +108,15 @@ log_debugf :: proc(fmt: string, args: ..any, loc := #caller_location) {
 }
 
 
-Exit :: _Exit
-Signal :: _Signal
 Process_Exit :: _Process_Exit
 Process_Handle :: _Process_Handle
+Pipe :: _Pipe
 
 Process :: struct {
-    using _impl:    _Process,
     handle:         Process_Handle,
     execution_time: time.Time,
+    stdout_pipe:    Maybe(Pipe),
+    stderr_pipe:    Maybe(Pipe),
 }
 
 process_wait :: proc(
