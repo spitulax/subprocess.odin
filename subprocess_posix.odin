@@ -11,7 +11,6 @@ import "core:time"
 
 
 FAIL :: -1
-Errno :: posix.Errno
 
 
 _Exit :: distinct u32
@@ -58,8 +57,8 @@ _process_wait :: proc(
                 )
                 result.stdout = pipe_read(&stdout_pipe, loc, alloc) or_return
                 result.stderr = pipe_read(&stderr_pipe, loc, alloc) or_return
-                pipe_close_read(&stdout_pipe, loc) or_return
-                pipe_close_read(&stderr_pipe, loc) or_return
+                pipe_close_read(&stdout_pipe) or_return
+                pipe_close_read(&stderr_pipe) or_return
             }
 
             if posix.WEXITSTATUS(status) == EARLY_EXIT_CODE {
@@ -82,7 +81,7 @@ _process_wait :: proc(
 
 
 _run_prog_async_unchecked :: proc(
-    prog: $string,
+    prog: string,
     args: []string,
     option: Run_Prog_Option = .Share,
     loc: Loc,
@@ -97,8 +96,8 @@ _run_prog_async_unchecked :: proc(
         dev_null = posix.open("/dev/null", {.RDWR, .CREAT}, {.IWUSR, .IWGRP, .IWOTH})
         assert(posix.errno() == .NONE, "could not open /dev/null")
     } else if option == .Capture {
-        pipe_init(&stdout_pipe, loc) or_return
-        pipe_init(&stderr_pipe, loc) or_return
+        pipe_init(&stdout_pipe) or_return
+        pipe_init(&stderr_pipe) or_return
     }
 
     runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
@@ -143,18 +142,18 @@ _run_prog_async_unchecked :: proc(
         case .Share:
             break
         case .Silent:
-            wrap(fd_redirect(dev_null, posix.STDOUT_FILENO, loc))
-            wrap(fd_redirect(dev_null, posix.STDERR_FILENO, loc))
-            wrap(fd_close(dev_null, loc))
+            wrap(fd_redirect(dev_null, posix.STDOUT_FILENO))
+            wrap(fd_redirect(dev_null, posix.STDERR_FILENO))
+            wrap(fd_close(dev_null))
         case .Capture:
-            wrap(pipe_close_read(&stdout_pipe, loc))
-            wrap(pipe_close_read(&stderr_pipe, loc))
+            wrap(pipe_close_read(&stdout_pipe))
+            wrap(pipe_close_read(&stderr_pipe))
 
-            wrap(pipe_redirect(&stdout_pipe, posix.STDOUT_FILENO, loc))
-            wrap(pipe_redirect(&stderr_pipe, posix.STDERR_FILENO, loc))
+            wrap(pipe_redirect(&stdout_pipe, posix.STDOUT_FILENO))
+            wrap(pipe_redirect(&stderr_pipe, posix.STDERR_FILENO))
 
-            wrap(pipe_close_write(&stdout_pipe, loc))
-            wrap(pipe_close_write(&stderr_pipe, loc))
+            wrap(pipe_close_write(&stdout_pipe))
+            wrap(pipe_close_write(&stderr_pipe))
         }
 
         if posix.execve(argv[0], raw_data(argv), posix.environ) == FAIL {
@@ -165,7 +164,7 @@ _run_prog_async_unchecked :: proc(
     execution_time := time.now()
 
     if option == .Silent {
-        fd_close(dev_null, loc) or_return
+        fd_close(dev_null) or_return
     }
 
     delete(argv)
@@ -211,6 +210,7 @@ _Internal_Error :: enum u8 {
     Fd_Redirect_Failed,
 }
 
+
 Pipe :: struct #raw_union {
     array: Pipe_Both,
     struc: Pipe_Separate,
@@ -222,7 +222,7 @@ Pipe_Separate :: struct #align (size_of(posix.FD)) {
 }
 
 @(require_results)
-pipe_init :: proc(self: ^Pipe, loc: Loc) -> (err: Error) {
+pipe_init :: proc(self: ^Pipe) -> (err: Error) {
     if posix.pipe(&self.array) == .FAIL {
         return Internal_Error.Pipe_Init_Failed
     }
@@ -230,7 +230,7 @@ pipe_init :: proc(self: ^Pipe, loc: Loc) -> (err: Error) {
 }
 
 @(require_results)
-pipe_close_read :: proc(self: ^Pipe, loc: Loc) -> (err: Error) {
+pipe_close_read :: proc(self: ^Pipe) -> (err: Error) {
     if posix.close(self.struc.read) == .FAIL {
         return Internal_Error.Pipe_Close_Failed
     }
@@ -238,7 +238,7 @@ pipe_close_read :: proc(self: ^Pipe, loc: Loc) -> (err: Error) {
 }
 
 @(require_results)
-pipe_close_write :: proc(self: ^Pipe, loc: Loc) -> (err: Error) {
+pipe_close_write :: proc(self: ^Pipe) -> (err: Error) {
     if posix.close(self.struc.write) == .FAIL {
         return Internal_Error.Pipe_Close_Failed
     }
@@ -246,7 +246,7 @@ pipe_close_write :: proc(self: ^Pipe, loc: Loc) -> (err: Error) {
 }
 
 @(require_results)
-pipe_redirect :: proc(self: ^Pipe, newfd: posix.FD, loc: Loc) -> (err: Error) {
+pipe_redirect :: proc(self: ^Pipe, newfd: posix.FD) -> (err: Error) {
     if posix.dup2(self.struc.write, newfd) == FAIL {
         return Internal_Error.Pipe_Redirect_Failed
     }
@@ -263,7 +263,7 @@ pipe_read :: proc(
     err: Error,
 ) {
     INITIAL_BUF_SIZE :: 1024
-    pipe_close_write(self, loc) or_return
+    pipe_close_write(self) or_return
     total_bytes_read := 0
     buf := make([dynamic]byte, INITIAL_BUF_SIZE)
     defer delete(buf)
@@ -290,7 +290,7 @@ pipe_read :: proc(
 
 
 @(require_results)
-fd_redirect :: proc(fd: posix.FD, newfd: posix.FD, loc: Loc) -> (err: Internal_Error) {
+fd_redirect :: proc(fd: posix.FD, newfd: posix.FD) -> (err: Internal_Error) {
     if posix.dup2(fd, newfd) == FAIL {
         return Internal_Error.Fd_Redirect_Failed
     }
@@ -298,7 +298,7 @@ fd_redirect :: proc(fd: posix.FD, newfd: posix.FD, loc: Loc) -> (err: Internal_E
 }
 
 @(require_results)
-fd_close :: proc(fd: posix.FD, loc: Loc) -> (err: Internal_Error) {
+fd_close :: proc(fd: posix.FD) -> (err: Internal_Error) {
     if posix.close(fd) == .FAIL {
         return Internal_Error.Fd_Close_Failed
     }

@@ -6,6 +6,7 @@
 REPO_ROOT=$(realpath ./.)
 
 ARGS += -vet
+ARGS += -vet-packages:subprocess
 ARGS += -disallow-do
 ARGS += -warnings-as-errors
 ARGS += -use-separate-modules

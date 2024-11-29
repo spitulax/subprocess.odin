@@ -14,7 +14,7 @@ POSIX_OS :: OS_Set{.Linux, .Darwin, .FreeBSD, .OpenBSD, .NetBSD} // use implemen
 SUPPORTED_OS :: POSIX_OS
 
 
-Flags :: enum {
+Flags :: enum u8 {
     Use_Context_Logger,
     Echo_Commands,
     Echo_Commands_Debug,
@@ -179,7 +179,7 @@ process_result_destroy_many :: proc(
 }
 
 
-Run_Prog_Option :: enum {
+Run_Prog_Option :: enum u8 {
     Share,
     Silent,
     Capture,
