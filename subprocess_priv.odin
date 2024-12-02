@@ -172,18 +172,56 @@ append_concat_string_sep :: proc(w: io.Writer, strs: []string, sep: string) {
 print_cmd :: proc(option: Run_Prog_Option, prog: string, args: []string, loc: Loc) {
     runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
     if g_flags & {.Echo_Commands, .Echo_Commands_Debug} != {} {
-        msg := fmt.tprintf(
-            "(%v) %s %s",
-            option,
-            prog,
-            // TODO: args is unescaped
-            concat_string_sep(args, " ", context.temp_allocator),
-        )
+        msg := fmt.tprintf("(%v) %s", option, combine_args(prog, args, context.temp_allocator))
         if .Echo_Commands in g_flags {
             log_info(msg, loc = loc)
         } else if .Echo_Commands_Debug in g_flags {
             log_debug(msg, loc = loc)
         }
     }
+}
+
+combine_args :: proc(
+    prog: string,
+    args: []string,
+    alloc := context.allocator,
+    loc := #caller_location,
+) -> string {
+    b := strings.builder_make()
+    defer strings.builder_destroy(&b)
+    for i in -1 ..< len(args) {
+        s: string
+        if i == -1 {
+            s = prog
+        } else {
+            s = args[i]
+            strings.write_rune(&b, ' ')
+        }
+
+        // NOTE: `strings.write_quoted_string` will always quote the string
+        need_quoting := strings.contains_space(s)
+
+        if need_quoting {
+            strings.write_rune(&b, '"')
+        }
+
+        for c, j in s {
+            switch c {
+            case '\\':
+                if s[j + 1] == '"' {
+                    strings.write_rune(&b, '\\')
+                }
+            case '"':
+                strings.write_rune(&b, '\\')
+            }
+            strings.write_rune(&b, c)
+        }
+
+        if need_quoting {
+            strings.write_rune(&b, '"')
+        }
+    }
+
+    return strings.clone(strings.to_string(b), alloc, loc)
 }
 

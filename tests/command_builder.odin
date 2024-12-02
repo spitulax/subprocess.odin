@@ -8,10 +8,10 @@ import "core:testing"
 command_builder :: proc(t: ^testing.T) {
     lib.default_flags_enable({.Use_Context_Logger, .Echo_Commands})
 
-    cmd := lib.unwrap(lib.command_make("sh"))
+    cmd := lib.unwrap(lib.command_make(SH))
     defer lib.command_destroy(&cmd)
-    lib.command_append(&cmd, "-c")
-    lib.command_append(&cmd, "echo 'Hello, World!'")
+    lib.command_append(&cmd, CMD)
+    lib.command_append(&cmd, "echo Hello, World!")
 
     {
         defer lib.command_destroy_results(&cmd)
@@ -26,8 +26,8 @@ command_builder :: proc(t: ^testing.T) {
             if !oks[i] {
                 continue
             }
-            testing.expect_value(t, x.exit, nil)
-            testing.expect_value(t, x.stdout, "Hello, World!\n" if i == 1 else "")
+            expect_success(t, x)
+            testing.expect_value(t, x.stdout, "Hello, World!" + NL if i == 1 else "")
             testing.expect_value(t, x.stderr, "")
         }
     }
@@ -50,8 +50,8 @@ command_builder :: proc(t: ^testing.T) {
             if x.err != nil {
                 log.error(x.err)
             } else {
-                testing.expect_value(t, x.result.exit, nil)
-                testing.expect_value(t, x.result.stdout, "Hello, World!\n")
+                expect_success(t, x.result^)
+                testing.expect_value(t, x.result.stdout, "Hello, World!" + NL)
                 testing.expect_value(t, x.result.stderr, "")
             }
         }

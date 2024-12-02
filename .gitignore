@@ -5,3 +5,4 @@ test
 test.odin
 *.bin
 *.o
+*.exe

@@ -21,6 +21,10 @@ _Process_Exit :: union {
 }
 _Process_Handle :: posix.pid_t
 
+_is_success :: proc(exit: Process_Exit) -> bool {
+    return exit == nil
+}
+
 
 _process_wait :: proc(
     self: Process,
@@ -170,7 +174,7 @@ _program :: proc($name: string, loc: Loc) -> (found: bool) {
         context.temp_allocator,
         loc,
     )
-    return res.exit == nil && err == nil
+    return process_result_success(res) && err == nil
 }
 
 

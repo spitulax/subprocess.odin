@@ -1,7 +1,17 @@
 # Interesting flags
 # NAME=<demo name> (example: hello.odin)
 # DEBUG=0, DEBUG=1
+# TARGET=<target> (example: windows_amd64, linux_amd64)
+# ODIN=<odin executable>
 
+ifeq ($(OS),Windows_NT)
+	IS_WINDOWS = 1
+endif
+ifneq ($(filter windows_%, $(TARGET)),)
+	IS_WINDOWS = 1
+endif
+
+ODIN ?= odin
 BUILD_DIR := ./build
 
 ifdef NAME
@@ -23,6 +33,13 @@ ifeq ($(DEBUG),1)
 else
 	ARGS += -o:speed
 endif
+ifdef TARGET
+	ARGS += -target:$(TARGET)
+endif
+
+ifeq ($(IS_WINDOWS),1)
+	TARGETS_LOC := $(addsuffix .exe, $(TARGETS_LOC))
+endif
 
 .PHONY: build run clean mkdir
 
@@ -39,8 +56,12 @@ run: $(TARGETS_LOC)
 		echo;\
 	)
 
+ifeq ($(IS_WINDOWS),1)
+$(TARGETS_LOC): $(BUILD_DIR)/%.exe: %.odin
+else
 $(TARGETS_LOC): $(BUILD_DIR)/%: %.odin
-	odin build $< -file $(ARGS) -out:$@
+endif
+	$(ODIN) build $< -file $(ARGS) -out:$@
 
 clean: 
 	rm -r $(BUILD_DIR)/*

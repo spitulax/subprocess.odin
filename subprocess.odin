@@ -1,7 +1,6 @@
 package subprocess
 
 // TODO: Specify additional environment variable in `run_*` functions
-// TODO: Support Windows
 // TODO: Make sending to stdin without user input possible
 // MAYBE: Add a function that invokes the respective system's shell like libc's `system()`
 
@@ -11,6 +10,7 @@ import "core:time"
 
 
 POSIX_OS :: OS_Set{.Linux, .Darwin, .FreeBSD, .OpenBSD, .NetBSD} // use implementations from `subprocess_posix.odin`
+WINDOWS_OS :: OS_Set{.Windows} // uses implementations from `subprocess_windows.odin`
 SUPPORTED_OS :: POSIX_OS
 
 
@@ -112,6 +112,10 @@ Process_Exit :: _Process_Exit
 Process_Handle :: _Process_Handle
 Pipe :: _Pipe
 
+is_success :: proc(exit: Process_Exit) -> bool {
+    return _is_success(exit)
+}
+
 Process :: struct {
     handle:         Process_Handle,
     execution_time: time.Time,
@@ -156,6 +160,10 @@ Process_Result :: struct {
     duration: time.Duration,
     stdout:   string, // both are "" if run_prog_* is not capturing
     stderr:   string, // I didn't make them both Maybe() for "convenience" when accessing them
+}
+
+process_result_success :: proc(self: Process_Result) -> bool {
+    return is_success(self.exit)
 }
 
 process_result_destroy :: proc(
@@ -264,6 +272,7 @@ Program :: struct {
     //full_path: string, // would require allocation
 }
 
+// TODO: make `_program` return up the error
 @(require_results)
 program :: proc($name: string, loc := #caller_location) -> Program {
     prog, _ := program_check(name, loc)

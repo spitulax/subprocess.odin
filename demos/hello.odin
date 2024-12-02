@@ -2,20 +2,22 @@ package demos
 
 import lib ".."
 
+when ODIN_OS in lib.POSIX_OS {
+    SH :: "sh"
+    CMD :: "-c" // shell flag to execute the next argument as a command
+} else when ODIN_OS in lib.WINDOWS_OS {
+    SH :: "cmd"
+    CMD :: "/C"
+}
+
 main :: proc() {
     lib.default_flags_enable({.Echo_Commands_Debug})
 
-    sh: lib.Program
-    when ODIN_OS in lib.POSIX_OS {
-        sh = lib.program("sh")
-
-        result, ok := lib.unwrap(lib.run_prog_sync(sh, {"-c", "echo 'Hello, World!'"}, .Capture))
-        defer lib.process_result_destroy(&result)
-        if ok {
-            lib.log_info(result)
-        }
-    } else {
-        unimplemented()
+    sh := lib.program(SH)
+    result, ok := lib.unwrap(lib.run_prog_sync(sh, {CMD, "echo Hello, World!"}, .Capture))
+    defer lib.process_result_destroy(&result)
+    if ok {
+        lib.log_info(result)
     }
 }
 
