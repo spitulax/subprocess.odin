@@ -30,19 +30,11 @@ Error :: union #shared_nil {
     Internal_Error,
 }
 
-// TODO: update error enums
-// NOTE: the procedure names don't account for errors returned from called procedures
 General_Error :: enum u8 {
     None = 0,
-
-    // `program_check`, `run_prog_*_checked`
     Program_Not_Found,
-
-    // `process_wait*`
     Process_Cannot_Exit,
     Program_Not_Executed,
-
-    // `run_prog*`
     Spawn_Failed,
 }
 

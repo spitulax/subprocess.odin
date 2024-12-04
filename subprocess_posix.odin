@@ -197,19 +197,11 @@ _program :: proc($name: string, loc: Loc) -> (found: bool) {
 
 _Internal_Error :: enum u8 {
     None = 0,
-
-    // `pipe_init`
     Pipe_Init_Failed,
-    // `pipe_close_*`
     Pipe_Close_Failed,
-    // `pipe_redirect`
     Pipe_Redirect_Failed,
-    // `pipe_reaa`
     Pipe_Read_Failed,
-
-    //  `fd_close`
     Fd_Close_Failed,
-    // `fd_redirect`
     Fd_Redirect_Failed,
 }
 
