@@ -11,6 +11,7 @@ import "core:time"
 
 
 FAIL :: -1
+EARLY_EXIT_CODE :: 211
 
 
 Exit_Code :: distinct u32
@@ -40,7 +41,7 @@ _process_wait :: proc(
 
     for {
         status: i32
-        child_pid := posix.waitpid(self.handle, &status, {})
+        child_pid := posix.waitpid(self.handle, &status, {.UNTRACED, .CONTINUED})
         if child_pid == FAIL {
             err = General_Error.Process_Cannot_Exit
         }

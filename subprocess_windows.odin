@@ -194,10 +194,12 @@ pipe_init :: proc(self: ^Pipe, sec_attrs: ^win.SECURITY_ATTRIBUTES) -> (err: Err
     return nil
 }
 
+@(require_results)
 pipe_close_read :: proc(self: Pipe) -> (err: Error) {
     return nil if win.CloseHandle(self.read) else Internal_Error.Pipe_Close_Failed
 }
 
+@(require_results)
 pipe_close_write :: proc(self: Pipe) -> (err: Error) {
     return nil if win.CloseHandle(self.write) else Internal_Error.Pipe_Close_Failed
 }
@@ -239,6 +241,7 @@ pipe_read :: proc(
     return
 }
 
+@(require_results)
 handle_close :: proc(handle: win.HANDLE) -> Error {
     return nil if win.CloseHandle(handle) else Internal_Error.Handle_Close_Failed
 }

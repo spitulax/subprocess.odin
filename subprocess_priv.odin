@@ -12,7 +12,6 @@ import "core:strings"
 g_flags: Flags_Set
 
 
-EARLY_EXIT_CODE :: 211
 OS_Set :: bit_set[runtime.Odin_OS_Type]
 Alloc :: runtime.Allocator
 Loc :: runtime.Source_Code_Location
