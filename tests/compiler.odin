@@ -12,7 +12,6 @@ RATS_DIR :: REPO_ROOT + "/" + ODIN_BUILD_PROJECT_NAME + "/rats/compiler"
 compiler :: proc(t: ^testing.T) {
     lib.default_flags_enable({.Use_Context_Logger, .Echo_Commands})
 
-    sh := lib.program(SH)
     cc := lib.program("gcc")
     testing.expect(
         t,
@@ -20,8 +19,10 @@ compiler :: proc(t: ^testing.T) {
         "GCC was not found. Run this test with GCC available (use mingw in Windows)",
     )
 
+    EXEC_PATH :: "/main.exe" when ODIN_OS in lib.WINDOWS_OS else "/main"
+
     result, result_ok := lib.unwrap(
-        lib.run_prog_sync(cc, {"-o", RATS_DIR + "/main", RATS_DIR + "/main.c"}, .Capture),
+        lib.run_prog_sync(cc, {"-o", RATS_DIR + EXEC_PATH, RATS_DIR + "/main.c"}, .Capture),
     )
     defer lib.process_result_destroy(&result)
     if result_ok {
@@ -31,9 +32,9 @@ compiler :: proc(t: ^testing.T) {
         }
     }
 
-    // TODO: specify environment variable
-    // eg. adding ./rats/compiler/main to PATH for this operation to call it without sh
-    result2, result2_ok := lib.unwrap(lib.run_prog_sync(sh, {CMD, RATS_DIR + "/main"}, .Capture))
+    //compiled_prog := lib.program(RATS_DIR + EXEC_PATH)
+    //if !testing.expect(t, compiled_prog.found) {return}
+    result2, result2_ok := lib.unwrap(lib.run_prog_sync(RATS_DIR + EXEC_PATH, {}, .Capture))
     defer lib.process_result_destroy(&result2)
     if result2_ok {
         if !lib.process_result_success(result2) {
@@ -44,7 +45,6 @@ compiler :: proc(t: ^testing.T) {
         testing.expect_value(t, result2.stderr, "")
     }
 
-    EXEC_PATH :: "/main.exe" when ODIN_OS in lib.WINDOWS_OS else "/main"
     if os.exists(RATS_DIR + EXEC_PATH) {
         os.remove(RATS_DIR + EXEC_PATH)
     }

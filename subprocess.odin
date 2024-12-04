@@ -1,5 +1,6 @@
 package subprocess
 
+// TODO: `program` doesn't work with file paths in Windows
 // TODO: Specify additional environment variable in `run_*` functions
 // TODO: Add option to not inherit environment
 // MAYBE: Add a function that invokes the respective system's shell like libc's `system()`

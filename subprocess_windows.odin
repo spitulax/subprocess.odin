@@ -222,7 +222,7 @@ _run_prog_async_unchecked :: proc(
 _program :: proc($name: string, loc: Loc) -> (found: bool) {
     res, err := run_prog_sync_unchecked(
         "cmd",
-        {"/C where " + name + " && exit 0 || exit 1"},
+        {"/C", "where " + name + " && exit 0 || exit 1"},
         .Silent,
         .Share,
         context.temp_allocator,
