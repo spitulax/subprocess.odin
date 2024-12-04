@@ -2,11 +2,11 @@ package subprocess
 
 // TODO: Specify additional environment variable in `run_*` functions
 // TODO: Add option to not inherit environment
-// TODO: Make sending to stdin without user input possible
 // MAYBE: Add a function that invokes the respective system's shell like libc's `system()`
 
 import "base:intrinsics"
 import "core:log"
+import "core:strings"
 import "core:time"
 
 
@@ -36,6 +36,7 @@ General_Error :: enum u8 {
     Process_Cannot_Exit,
     Program_Not_Executed,
     Spawn_Failed,
+    Pipe_Write_Failed,
 }
 
 Internal_Error :: _Internal_Error
@@ -46,7 +47,20 @@ Internal_Error :: _Internal_Error
 // // or ...
 // result = unwrap(run_prog_sync("command")) // prints the error using `log_error`
 // ```
-unwrap :: proc(ret: $T, err: Error, loc := #caller_location) -> (res: T, ok: bool) #optional_ok {
+unwrap :: proc {
+    unwrap_0,
+    unwrap_1,
+}
+
+unwrap_0 :: proc(err: Error, loc := #caller_location) -> (ok: bool) {
+    if err != nil {
+        log_error(err, loc = loc)
+        return false
+    }
+    return true
+}
+
+unwrap_1 :: proc(ret: $T, err: Error, loc := #caller_location) -> (res: T, ok: bool) #optional_ok {
     if err != nil {
         log_error(err, loc = loc)
         ok = false
@@ -104,7 +118,6 @@ log_debugf :: proc(fmt: string, args: ..any, loc := #caller_location) {
 
 Process_Exit :: _Process_Exit
 Process_Handle :: _Process_Handle
-Pipe :: _Pipe
 
 is_success :: proc(exit: Process_Exit) -> bool {
     return _is_success(exit)
@@ -116,6 +129,7 @@ Process :: struct {
     alive:          bool,
     stdout_pipe:    Maybe(Pipe),
     stderr_pipe:    Maybe(Pipe),
+    stdin_pipe:     Maybe(Pipe),
 }
 
 process_wait :: proc(
@@ -183,11 +197,17 @@ process_result_destroy_many :: proc(
 }
 
 
-Run_Prog_Option :: enum u8 {
+Output_Option :: enum u8 {
     Share,
     Silent,
     Capture, // separate stdout and stderr
     Capture_Combine, // combine stdout and stderr
+}
+
+Input_Option :: enum u8 {
+    Share,
+    Nothing, // send nothing
+    Pipe, // return the stdin pipe
 }
 
 run_prog_async :: proc {
@@ -203,20 +223,22 @@ run_prog_sync :: proc {
 run_prog_async_unchecked :: proc(
     prog: string,
     args: []string = nil,
-    option: Run_Prog_Option = .Share,
+    out_opt: Output_Option = .Share,
+    in_opt: Input_Option = .Share,
     loc := #caller_location,
 ) -> (
     process: Process,
     err: Error,
 ) {
-    return _run_prog_async_unchecked(prog, args, option, loc)
+    return _run_prog_async_unchecked(prog, args, out_opt, in_opt, loc)
 }
 
 // DOCS: `process` is empty or {} if `cmd` is not found
 run_prog_async_checked :: proc(
     prog: Program,
     args: []string = nil,
-    option: Run_Prog_Option = .Share,
+    out_opt: Output_Option = .Share,
+    in_opt: Input_Option = .Share,
     loc := #caller_location,
 ) -> (
     process: Process,
@@ -226,20 +248,21 @@ run_prog_async_checked :: proc(
         err = General_Error.Program_Not_Found
         return
     }
-    return _run_prog_async_unchecked(prog.name, args, option, loc)
+    return _run_prog_async_unchecked(prog.name, args, out_opt, in_opt, loc)
 }
 
 run_prog_sync_unchecked :: proc(
     prog: string,
     args: []string = nil,
-    option: Run_Prog_Option = .Share,
+    out_opt: Output_Option = .Share,
+    in_opt: Input_Option = .Share,
     alloc := context.allocator,
     loc := #caller_location,
 ) -> (
     result: Process_Result,
     err: Error,
 ) {
-    process := run_prog_async_unchecked(prog, args, option, loc) or_return
+    process := run_prog_async_unchecked(prog, args, out_opt, in_opt, loc) or_return
     return process_wait(&process, alloc, loc)
 }
 
@@ -247,7 +270,8 @@ run_prog_sync_unchecked :: proc(
 run_prog_sync_checked :: proc(
     prog: Program,
     args: []string = nil,
-    option: Run_Prog_Option = .Share,
+    out_opt: Output_Option = .Share,
+    in_opt: Input_Option = .Share,
     alloc := context.allocator,
     loc := #caller_location,
 ) -> (
@@ -258,7 +282,7 @@ run_prog_sync_checked :: proc(
         err = General_Error.Program_Not_Found
         return
     }
-    process := run_prog_async_unchecked(prog.name, args, option, loc) or_return
+    process := run_prog_async_unchecked(prog.name, args, out_opt, in_opt, loc) or_return
     return process_wait(&process, alloc, loc)
 }
 
@@ -269,7 +293,6 @@ Program :: struct {
     //full_path: string, // would require allocation
 }
 
-// TODO: make `_program` return up the error
 @(require_results)
 program :: proc($name: string, loc := #caller_location) -> Program {
     prog, _ := program_check(name, loc)
@@ -280,6 +303,7 @@ program :: proc($name: string, loc := #caller_location) -> Program {
 program_check :: proc($name: string, loc := #caller_location) -> (prog: Program, err: Error) {
     flags_temp := g_flags
     default_flags_disable({.Echo_Commands, .Echo_Commands_Debug})
+    // TODO: make `_program` return up the error
     found := _program(name, loc)
     g_flags = flags_temp
     if !found {
@@ -290,11 +314,9 @@ program_check :: proc($name: string, loc := #caller_location) -> (prog: Program,
 
 
 Command :: struct {
-    prog:              Program,
-    args:              [dynamic]string,
-    results:           [dynamic]Process_Result,
-    running_processes: [dynamic]Process,
-    alloc:             Alloc,
+    prog:  Program,
+    args:  [dynamic]string,
+    alloc: Alloc,
 }
 
 command_make :: proc {
@@ -308,13 +330,7 @@ command_make :: proc {
 
 @(private)
 _command_make :: proc(prog: Program, len, cap: int, alloc: Alloc, loc: Loc) -> Command {
-    return Command {
-        prog = prog,
-        args = make([dynamic]string, len, cap, alloc, loc),
-        results = make([dynamic]Process_Result, alloc, loc),
-        running_processes = make([dynamic]Process, alloc, loc),
-        alloc = alloc,
-    }
+    return Command{prog = prog, args = make([dynamic]string, len, cap, alloc, loc), alloc = alloc}
 }
 
 @(require_results)
@@ -437,82 +453,80 @@ command_clear :: proc(self: ^Command) {
     clear(&self.args)
 }
 
-command_wait_all :: proc(
-    self: ^Command,
-    alloc := context.allocator,
-    loc := #caller_location,
-) -> (
-    res: #soa[]struct {
-        result: ^Process_Result,
-        err:    Error,
-    },
-) {
-    res = make_soa_slice(type_of(res), len(self.running_processes), alloc, loc)
-    for &process, i in self.running_processes {
-        process_result, process_err := process_wait(&process, self.alloc, loc)
-        append(&self.results, process_result, loc)
-        res[i].result = &self.results[len(self.results) - 1]
-        res[i].err = process_err
-    }
-    clear(&self.running_processes)
-    return
-}
-
-command_destroy :: proc(self: ^Command, loc := #caller_location) -> Error {
+command_destroy :: proc(self: ^Command, loc := #caller_location) {
     command_clear(self)
-    command_destroy_results(self, loc)
-    {
-        res := command_wait_all(self)
-        defer delete(res)
-        for x in res {
-            if x.err != nil {
-                return x.err
-            }
-        }
-    }
-
     delete(self.args, loc)
-    delete(self.results, loc)
-    delete(self.running_processes, loc)
-
-    return nil
-}
-
-command_destroy_results :: proc(self: ^Command, loc := #caller_location) {
-    process_result_destroy_many(self.results[:], self.alloc, loc)
-    clear(&self.results)
 }
 
 command_run_sync :: proc(
     self: ^Command,
-    option: Run_Prog_Option = .Share,
+    out_opt: Output_Option = .Share,
+    in_opt: Input_Option = .Share,
     loc := #caller_location,
 ) -> (
-    result: ^Process_Result,
+    result: Process_Result,
     err: Error,
 ) {
-    append(
-        &self.results,
-        run_prog_sync(self.prog, self.args[:], option, self.alloc, loc) or_return,
-        loc,
-    )
-    return &self.results[len(self.results) - 1], nil
+    return run_prog_sync(self.prog, self.args[:], out_opt, in_opt, self.alloc, loc)
 }
 
 command_run_async :: proc(
     self: ^Command,
-    option: Run_Prog_Option = .Share,
+    out_opt: Output_Option = .Share,
+    in_opt: Input_Option = .Share,
     loc := #caller_location,
 ) -> (
-    process: ^Process,
+    process: Process,
     err: Error,
 ) {
-    append(
-        &self.running_processes,
-        run_prog_async(self.prog, self.args[:], option, loc) or_return,
-        loc,
-    )
-    return &self.running_processes[len(self.running_processes) - 1], nil
+    return run_prog_async(self.prog, self.args[:], out_opt, in_opt, loc)
+}
+
+
+Pipe :: _Pipe
+
+pipe_write :: proc {
+    pipe_write_buf,
+    pipe_write_string,
+}
+
+pipe_write_buf :: proc(
+    self: Pipe,
+    buf: []byte,
+    send_newline: bool = true,
+) -> (
+    n: int,
+    err: Error,
+) {
+    if send_newline {
+        nl_buf := make([]byte, len(buf) + len(NL))
+        defer delete(nl_buf)
+        copy_slice(nl_buf, buf)
+        nl := NL
+        for i in 0 ..< len(NL) {
+            nl_buf[len(buf) + i] = nl[i]
+        }
+        return _pipe_write_buf(self, nl_buf)
+    }
+    return _pipe_write_buf(self, buf)
+}
+
+pipe_write_string :: proc(
+    self: Pipe,
+    str: string,
+    send_newline: bool = true,
+) -> (
+    n: int,
+    err: Error,
+) {
+    if send_newline {
+        nl_sb := strings.builder_make(0, len(str) + len(NL))
+        defer strings.builder_destroy(&nl_sb)
+        strings.write_string(&nl_sb, str)
+        strings.write_string(&nl_sb, NL)
+        return _pipe_write_string(self, strings.to_string(nl_sb))
+    }
+    return _pipe_write_string(self, str)
 }
 
 

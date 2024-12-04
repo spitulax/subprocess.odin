@@ -10,19 +10,18 @@ command_builder :: proc(t: ^testing.T) {
 
     cmd := lib.unwrap(lib.command_make(SH))
     defer lib.command_destroy(&cmd)
+    if !testing.expect(t, cmd.prog.found) {return}
     lib.command_append(&cmd, CMD)
     lib.command_append(&cmd, "echo Hello, World!")
 
     {
-        defer lib.command_destroy_results(&cmd)
-        results: [3]^lib.Process_Result
+        results: [3]lib.Process_Result
         oks: [3]bool
         results[0], oks[0] = lib.unwrap(lib.command_run_sync(&cmd, .Share))
         results[1], oks[1] = lib.unwrap(lib.command_run_sync(&cmd, .Capture))
         results[2], oks[2] = lib.unwrap(lib.command_run_sync(&cmd, .Silent))
-        testing.expect_value(t, len(cmd.results), 3)
-        for &x, i in cmd.results {
-            testing.expect_value(t, &x, results[i])
+        defer lib.process_result_destroy_many(results[:])
+        for &x, i in results {
             if !oks[i] {
                 continue
             }
@@ -33,24 +32,23 @@ command_builder :: proc(t: ^testing.T) {
     }
 
     {
-        defer lib.command_destroy_results(&cmd)
         PROCESSES :: 5
-        processes: [PROCESSES]^lib.Process
+        processes: [PROCESSES]lib.Process
         for i in 0 ..< PROCESSES {
             processes[i] = lib.unwrap(lib.command_run_async(&cmd, .Capture))
-            testing.expect_value(t, processes[i], &cmd.running_processes[i])
         }
-        testing.expect_value(t, len(cmd.running_processes), PROCESSES)
-        res := lib.command_wait_all(&cmd)
+        res := lib.process_wait_many(processes[:])
+        defer {
+            proc_res, _ := soa_unzip(res)
+            lib.process_result_destroy_many(proc_res)
+        }
         defer delete(res)
-        testing.expect_value(t, len(cmd.running_processes), 0)
-        testing.expect_value(t, len(cmd.results), PROCESSES)
-        for &x, i in res {
-            testing.expect_value(t, x.result, &cmd.results[i])
+        testing.expect_value(t, len(res), PROCESSES)
+        for x in res {
             if x.err != nil {
                 log.error(x.err)
             } else {
-                expect_success(t, x.result^)
+                expect_success(t, x.result)
                 testing.expect_value(t, x.result.stdout, "Hello, World!" + NL)
                 testing.expect_value(t, x.result.stderr, "")
             }

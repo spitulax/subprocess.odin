@@ -49,6 +49,7 @@ _process_wait :: proc(
 
     stdout_pipe, stdout_pipe_ok := self.stdout_pipe.?
     stderr_pipe, stderr_pipe_ok := self.stderr_pipe.?
+    stdin_pipe, stdin_pipe_ok := self.stdin_pipe.?
     if stdout_pipe_ok {
         result.stdout = pipe_read(&stdout_pipe, loc, alloc) or_return
         pipe_close_read(stdout_pipe) or_return
@@ -56,6 +57,9 @@ _process_wait :: proc(
     if stderr_pipe_ok {
         result.stderr = pipe_read(&stderr_pipe, loc, alloc) or_return
         pipe_close_read(stderr_pipe) or_return
+    }
+    if stdin_pipe_ok {
+        pipe_close_write(stdin_pipe) or_return
     }
 
     return
@@ -65,7 +69,8 @@ _process_wait :: proc(
 _run_prog_async_unchecked :: proc(
     prog: string,
     args: []string,
-    option: Run_Prog_Option = .Share,
+    out_opt: Output_Option = .Share,
+    in_opt: Input_Option = .Share,
     loc: Loc,
 ) -> (
     process: Process,
@@ -81,16 +86,17 @@ _run_prog_async_unchecked :: proc(
 
     start_info: win.STARTUPINFOW
     start_info.cb = size_of(win.STARTUPINFOW)
-    stdout_pipe, stderr_pipe: _Pipe
+    stdout_pipe, stderr_pipe, stdin_pipe: _Pipe
     dev_null: win.HANDLE
 
-    switch option {
+    switch out_opt {
     case .Share:
-        break
+        start_info.hStdOutput = win.GetStdHandle(win.STD_OUTPUT_HANDLE)
+        start_info.hStdError = win.GetStdHandle(win.STD_ERROR_HANDLE)
     case .Silent:
         dev_null = win.CreateFileW(
             win.utf8_to_wstring("NUL"),
-            win.GENERIC_WRITE,
+            win.GENERIC_WRITE | win.GENERIC_READ,
             win.FILE_SHARE_WRITE | win.FILE_SHARE_READ,
             &sec_attrs,
             win.OPEN_EXISTING,
@@ -100,22 +106,44 @@ _run_prog_async_unchecked :: proc(
         assert(dev_null != win.INVALID_HANDLE_VALUE, "could not open NUL device")
         start_info.hStdOutput = dev_null
         start_info.hStdError = dev_null
-        start_info.dwFlags |= win.STARTF_USESTDHANDLES
     case .Capture:
         pipe_init(&stdout_pipe, &sec_attrs) or_return
         pipe_init(&stderr_pipe, &sec_attrs) or_return
         start_info.hStdOutput = stdout_pipe.write
         start_info.hStdError = stderr_pipe.write
-        start_info.dwFlags |= win.STARTF_USESTDHANDLES
     case .Capture_Combine:
         pipe_init(&stdout_pipe, &sec_attrs) or_return
         start_info.hStdOutput = stdout_pipe.write
         start_info.hStdError = stdout_pipe.write
-        start_info.dwFlags |= win.STARTF_USESTDHANDLES
     }
 
+    switch in_opt {
+    case .Share:
+        start_info.hStdInput = win.GetStdHandle(win.STD_INPUT_HANDLE)
+    case .Nothing:
+        if dev_null == nil {
+            dev_null = win.CreateFileW(
+                win.utf8_to_wstring("NUL"),
+                win.GENERIC_WRITE | win.GENERIC_READ,
+                win.FILE_SHARE_WRITE | win.FILE_SHARE_READ,
+                &sec_attrs,
+                win.OPEN_EXISTING,
+                win.FILE_ATTRIBUTE_NORMAL,
+                nil,
+                )
+            assert(dev_null != win.INVALID_HANDLE_VALUE, "could not open NUL device")
+        }
+        start_info.hStdInput = dev_null
+    case .Pipe:
+        pipe_init(&stdin_pipe, &sec_attrs) or_return
+        start_info.hStdInput = stdin_pipe.read
+    }
+
+    assert(start_info.hStdOutput != nil && start_info.hStdError != nil && start_info.hStdInput != nil)
+    start_info.dwFlags |= win.STARTF_USESTDHANDLES
+
     cmd := combine_args(prog, args, context.temp_allocator)
-    print_cmd(option, prog, args, loc)
+    print_cmd(out_opt, in_opt, prog, args, loc)
 
     proc_info: win.PROCESS_INFORMATION
     // NOTE: Environment variables of the calling process are passed
@@ -132,11 +160,13 @@ _run_prog_async_unchecked :: proc(
         &proc_info,
     )
 
-    switch option {
-    case .Share:
-        break
-    case .Silent:
+    if out_opt == .Silent || in_opt == .Nothing {
         handle_close(dev_null) or_return
+    }
+
+    switch out_opt {
+    case .Share, .Silent:
+        break
     case .Capture:
         pipe_close_write(stdout_pipe) or_return
         pipe_close_write(stderr_pipe) or_return
@@ -144,11 +174,15 @@ _run_prog_async_unchecked :: proc(
         pipe_close_write(stdout_pipe) or_return
     }
 
+    if in_opt == .Pipe {
+        pipe_close_read(stdin_pipe) or_return
+    }
+
     if ok {
         process.execution_time = time.now()
         process.alive = true
 
-        switch option {
+        switch out_opt {
         case .Share, .Silent:
             process.stdout_pipe = nil
             process.stderr_pipe = nil
@@ -159,9 +193,14 @@ _run_prog_async_unchecked :: proc(
             process.stdout_pipe = stdout_pipe
             process.stderr_pipe = nil
         }
+
+        if in_opt == .Pipe {
+            process.stdin_pipe = stdin_pipe
+        }
+
         process.handle = {proc_info.hProcess, proc_info.hThread}
     } else {
-        switch option {
+        switch out_opt {
         case .Share, .Silent:
             break
         case .Capture:
@@ -169,6 +208,9 @@ _run_prog_async_unchecked :: proc(
             pipe_close_read(stderr_pipe) or_return
         case .Capture_Combine:
             pipe_close_read(stdout_pipe) or_return
+        }
+        if in_opt == .Pipe {
+            pipe_close_write(stdin_pipe) or_return
         }
         err = General_Error.Spawn_Failed
     }
@@ -182,6 +224,7 @@ _program :: proc($name: string, loc: Loc) -> (found: bool) {
         "cmd",
         {"/C where " + name + " && exit 0 || exit 1"},
         .Silent,
+        .Share,
         context.temp_allocator,
         loc,
     )
@@ -191,14 +234,9 @@ _program :: proc($name: string, loc: Loc) -> (found: bool) {
 
 _Internal_Error :: enum u8 {
     None = 0,
-
-    // `pipe_init`
     Pipe_Init_Failed,
-    // `pipe_close_*`
     Pipe_Close_Failed,
-    // `pipe_read`
     Pipe_Read_Failed,
-    // `handle_close`
     Handle_Close_Failed,
 }
 
@@ -264,6 +302,29 @@ pipe_read :: proc(
     result = strings.clone_from_bytes(buf[:total_bytes_read], alloc, loc)
     return
 }
+
+@(require_results)
+_pipe_write_buf :: proc(self: Pipe, buf: []byte) -> (n: int, err: Error) {
+    written: win.DWORD
+    if !win.WriteFile(self.write, raw_data(buf), win.DWORD(len(buf)), &written, nil) {
+        err = General_Error.Pipe_Write_Failed
+        return
+    } else {
+        return int(written), nil
+    }
+}
+
+@(require_results)
+_pipe_write_string :: proc(self: Pipe, str: string) -> (n: int, err: Error) {
+    written: win.DWORD
+    if !win.WriteFile(self.write, raw_data(str), win.DWORD(len(str)), &written, nil) {
+        err = General_Error.Pipe_Write_Failed
+        return
+    } else {
+        return int(written), nil
+    }
+}
+
 
 @(require_results)
 handle_close :: proc(handle: win.HANDLE) -> Error {

@@ -51,6 +51,7 @@ _process_wait :: proc(
         if posix.WIFSIGNALED(status) || posix.WIFEXITED(status) {
             stdout_pipe, stdout_pipe_ok := self.stdout_pipe.?
             stderr_pipe, stderr_pipe_ok := self.stderr_pipe.?
+            stdin_pipe, stdin_pipe_ok := self.stdin_pipe.?
             if stdout_pipe_ok {
                 result.stdout = pipe_read(&stdout_pipe, loc, alloc) or_return
                 pipe_close_read(&stdout_pipe) or_return
@@ -58,6 +59,10 @@ _process_wait :: proc(
             if stderr_pipe_ok {
                 result.stderr = pipe_read(&stderr_pipe, loc, alloc) or_return
                 pipe_close_read(&stderr_pipe) or_return
+            }
+            if stdin_pipe_ok {
+                pipe_close_write(&stdin_pipe) or_return
+                pipe_close_read(&stdin_pipe) or_return
             }
 
             if posix.WEXITSTATUS(status) == EARLY_EXIT_CODE {
@@ -82,16 +87,17 @@ _process_wait :: proc(
 _run_prog_async_unchecked :: proc(
     prog: string,
     args: []string,
-    option: Run_Prog_Option = .Share,
+    out_opt: Output_Option = .Share,
+    in_opt: Input_Option = .Share,
     loc: Loc,
 ) -> (
     process: Process,
     err: Error,
 ) {
-    stdout_pipe, stderr_pipe: _Pipe
+    stdout_pipe, stderr_pipe, stdin_pipe: _Pipe
     dev_null: posix.FD
 
-    switch option {
+    switch out_opt {
     case .Share:
         break
     case .Silent:
@@ -104,6 +110,18 @@ _run_prog_async_unchecked :: proc(
         pipe_init(&stdout_pipe) or_return
     }
 
+    switch in_opt {
+    case .Share:
+        break
+    case .Nothing:
+        if dev_null == 0 {
+            dev_null = posix.open("/dev/null", {.RDWR, .CREAT}, {.IWUSR, .IWGRP, .IWOTH})
+            assert(posix.errno() == .NONE, "could not open /dev/null")
+        }
+    case .Pipe:
+        pipe_init(&stdin_pipe) or_return
+    }
+
     runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
     argv := make([]cstring, len(args) + 3)
     argv[0] = "/usr/bin/env"
@@ -113,7 +131,7 @@ _run_prog_async_unchecked :: proc(
     }
     argv[len(argv) - 1] = nil
 
-    print_cmd(option, prog, args, loc)
+    print_cmd(out_opt, in_opt, prog, args, loc)
 
     child_pid := posix.fork()
     if child_pid == FAIL {
@@ -128,13 +146,12 @@ _run_prog_async_unchecked :: proc(
             }
         }
 
-        switch option {
+        switch out_opt {
         case .Share:
             break
         case .Silent:
             wrap(fd_redirect(dev_null, posix.STDOUT_FILENO))
             wrap(fd_redirect(dev_null, posix.STDERR_FILENO))
-            wrap(fd_close(dev_null))
         case .Capture:
             wrap(pipe_close_read(&stdout_pipe))
             wrap(pipe_close_read(&stderr_pipe))
@@ -153,6 +170,21 @@ _run_prog_async_unchecked :: proc(
             wrap(pipe_close_write(&stdout_pipe))
         }
 
+        switch in_opt {
+        case .Share:
+            break
+        case .Nothing:
+            wrap(fd_redirect(dev_null, posix.STDIN_FILENO))
+        case .Pipe:
+            wrap(pipe_close_write(&stdin_pipe))
+            wrap(pipe_redirect_read(&stdin_pipe, posix.STDIN_FILENO))
+            wrap(pipe_close_read(&stdin_pipe))
+        }
+
+        if out_opt == .Silent || in_opt == .Nothing {
+            fd_close(dev_null) or_return
+        }
+
         if posix.execve(argv[0], raw_data(argv), posix.environ) == FAIL {
             wrap(General_Error.Program_Not_Executed)
         }
@@ -161,13 +193,12 @@ _run_prog_async_unchecked :: proc(
     process.execution_time = time.now()
     process.alive = true
 
-    if option == .Silent {
-        fd_close(dev_null) or_return
-    }
-
     delete(argv)
 
-    switch option {
+    if out_opt == .Silent || in_opt == .Nothing {
+        fd_close(dev_null) or_return
+    }
+    switch out_opt {
     case .Share, .Silent:
         process.stdout_pipe = nil
         process.stderr_pipe = nil
@@ -177,6 +208,9 @@ _run_prog_async_unchecked :: proc(
     case .Capture_Combine:
         process.stdout_pipe = stdout_pipe
         process.stderr_pipe = nil
+    }
+    if in_opt == .Pipe {
+        process.stdin_pipe = stdin_pipe
     }
     process.handle = child_pid
     return
@@ -188,6 +222,7 @@ _program :: proc($name: string, loc: Loc) -> (found: bool) {
         "sh",
         {"-c", "command -v " + name},
         .Silent,
+        .Share,
         context.temp_allocator,
         loc,
     )
@@ -241,6 +276,14 @@ pipe_close_write :: proc(self: ^Pipe) -> (err: Error) {
 }
 
 @(require_results)
+pipe_redirect_read :: proc(self: ^Pipe, newfd: posix.FD) -> (err: Error) {
+    if posix.dup2(self.struc.read, newfd) == FAIL {
+        return Internal_Error.Pipe_Redirect_Failed
+    }
+    return nil
+}
+
+@(require_results)
 pipe_redirect_write :: proc(self: ^Pipe, newfd: posix.FD) -> (err: Error) {
     if posix.dup2(self.struc.write, newfd) == FAIL {
         return Internal_Error.Pipe_Redirect_Failed
@@ -281,6 +324,26 @@ pipe_read :: proc(
     }
     result = strings.clone_from_bytes(buf[:total_bytes_read], alloc, loc)
     return
+}
+
+@(require_results)
+_pipe_write_buf :: proc(self: Pipe, buf: []byte) -> (n: int, err: Error) {
+    if n = posix.write(self.struc.write, raw_data(buf), len(buf)); n == FAIL {
+        err = General_Error.Pipe_Write_Failed
+        return
+    } else {
+        return n, nil
+    }
+}
+
+@(require_results)
+_pipe_write_string :: proc(self: Pipe, str: string) -> (n: int, err: Error) {
+    if n = posix.write(self.struc.write, raw_data(str), len(str)); n == FAIL {
+        err = General_Error.Pipe_Write_Failed
+        return
+    } else {
+        return n, nil
+    }
 }
 
 
