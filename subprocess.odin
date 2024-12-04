@@ -1,6 +1,5 @@
 package subprocess
 
-// TODO: Add option to combine stdout and stderr
 // TODO: Specify additional environment variable in `run_*` functions
 // TODO: Add option to not inherit environment
 // TODO: Make sending to stdin without user input possible
@@ -31,6 +30,8 @@ Error :: union #shared_nil {
     Internal_Error,
 }
 
+// TODO: update error enums
+// NOTE: the procedure names don't account for errors returned from called procedures
 General_Error :: enum u8 {
     None = 0,
 
@@ -40,7 +41,6 @@ General_Error :: enum u8 {
     // `process_wait*`
     Process_Cannot_Exit,
     Program_Not_Executed,
-    Program_Execution_Failed,
 
     // `run_prog*`
     Spawn_Failed,
@@ -161,8 +161,9 @@ process_wait_many :: proc(
 Process_Result :: struct {
     exit:     Process_Exit, // nil on success
     duration: time.Duration,
-    stdout:   string, // both are "" if run_prog_* is not capturing
-    stderr:   string, // I didn't make them both Maybe() for "convenience" when accessing them
+    // I didn't make them both Maybe() for "convenience" when accessing them
+    stdout:   string, // stdout and stderr are empty if run_prog_* was called with .Capture
+    stderr:   string, // but stderr is empty if run_prog_* was called with .Capture_Combine
 }
 
 process_result_success :: proc(self: Process_Result) -> bool {
@@ -193,7 +194,8 @@ process_result_destroy_many :: proc(
 Run_Prog_Option :: enum u8 {
     Share,
     Silent,
-    Capture,
+    Capture, // separate stdout and stderr
+    Capture_Combine, // combine stdout and stderr
 }
 
 run_prog_async :: proc {

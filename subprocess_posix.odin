@@ -51,14 +51,12 @@ _process_wait :: proc(
         if posix.WIFSIGNALED(status) || posix.WIFEXITED(status) {
             stdout_pipe, stdout_pipe_ok := self.stdout_pipe.?
             stderr_pipe, stderr_pipe_ok := self.stderr_pipe.?
-            if stdout_pipe_ok || stderr_pipe_ok {
-                assert(
-                    stderr_pipe_ok == stdout_pipe_ok,
-                    "stdout and stderr pipe aren't equally initialized",
-                )
+            if stdout_pipe_ok {
                 result.stdout = pipe_read(&stdout_pipe, loc, alloc) or_return
-                result.stderr = pipe_read(&stderr_pipe, loc, alloc) or_return
                 pipe_close_read(&stdout_pipe) or_return
+            }
+            if stderr_pipe_ok {
+                result.stderr = pipe_read(&stderr_pipe, loc, alloc) or_return
                 pipe_close_read(&stderr_pipe) or_return
             }
 
@@ -93,12 +91,17 @@ _run_prog_async_unchecked :: proc(
     stdout_pipe, stderr_pipe: _Pipe
     dev_null: posix.FD
 
-    if option == .Silent {
+    switch option {
+    case .Share:
+        break
+    case .Silent:
         dev_null = posix.open("/dev/null", {.RDWR, .CREAT}, {.IWUSR, .IWGRP, .IWOTH})
         assert(posix.errno() == .NONE, "could not open /dev/null")
-    } else if option == .Capture {
+    case .Capture:
         pipe_init(&stdout_pipe) or_return
         pipe_init(&stderr_pipe) or_return
+    case .Capture_Combine:
+        pipe_init(&stdout_pipe) or_return
     }
 
     runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
@@ -136,11 +139,18 @@ _run_prog_async_unchecked :: proc(
             wrap(pipe_close_read(&stdout_pipe))
             wrap(pipe_close_read(&stderr_pipe))
 
-            wrap(pipe_redirect(&stdout_pipe, posix.STDOUT_FILENO))
-            wrap(pipe_redirect(&stderr_pipe, posix.STDERR_FILENO))
+            wrap(pipe_redirect_write(&stdout_pipe, posix.STDOUT_FILENO))
+            wrap(pipe_redirect_write(&stderr_pipe, posix.STDERR_FILENO))
 
             wrap(pipe_close_write(&stdout_pipe))
             wrap(pipe_close_write(&stderr_pipe))
+        case .Capture_Combine:
+            wrap(pipe_close_read(&stdout_pipe))
+
+            wrap(pipe_redirect_write(&stdout_pipe, posix.STDOUT_FILENO))
+            wrap(fd_redirect(posix.STDOUT_FILENO, posix.STDERR_FILENO))
+
+            wrap(pipe_close_write(&stdout_pipe))
         }
 
         if posix.execve(argv[0], raw_data(argv), posix.environ) == FAIL {
@@ -156,8 +166,18 @@ _run_prog_async_unchecked :: proc(
     }
 
     delete(argv)
-    process.stdout_pipe = (option == .Capture) ? stdout_pipe : nil
-    process.stderr_pipe = (option == .Capture) ? stderr_pipe : nil
+
+    switch option {
+    case .Share, .Silent:
+        process.stdout_pipe = nil
+        process.stderr_pipe = nil
+    case .Capture:
+        process.stdout_pipe = stdout_pipe
+        process.stderr_pipe = stderr_pipe
+    case .Capture_Combine:
+        process.stdout_pipe = stdout_pipe
+        process.stderr_pipe = nil
+    }
     process.handle = child_pid
     return
 }
@@ -229,7 +249,7 @@ pipe_close_write :: proc(self: ^Pipe) -> (err: Error) {
 }
 
 @(require_results)
-pipe_redirect :: proc(self: ^Pipe, newfd: posix.FD) -> (err: Error) {
+pipe_redirect_write :: proc(self: ^Pipe, newfd: posix.FD) -> (err: Error) {
     if posix.dup2(self.struc.write, newfd) == FAIL {
         return Internal_Error.Pipe_Redirect_Failed
     }

@@ -49,14 +49,12 @@ _process_wait :: proc(
 
     stdout_pipe, stdout_pipe_ok := self.stdout_pipe.?
     stderr_pipe, stderr_pipe_ok := self.stderr_pipe.?
-    if stdout_pipe_ok || stderr_pipe_ok {
-        assert(
-            stderr_pipe_ok == stdout_pipe_ok,
-            "stdout and stderr pipe aren't equally initialized",
-        )
+    if stdout_pipe_ok {
         result.stdout = pipe_read(&stdout_pipe, loc, alloc) or_return
-        result.stderr = pipe_read(&stderr_pipe, loc, alloc) or_return
         pipe_close_read(stdout_pipe) or_return
+    }
+    if stderr_pipe_ok {
+        result.stderr = pipe_read(&stderr_pipe, loc, alloc) or_return
         pipe_close_read(stderr_pipe) or_return
     }
 
@@ -86,7 +84,10 @@ _run_prog_async_unchecked :: proc(
     stdout_pipe, stderr_pipe: _Pipe
     dev_null: win.HANDLE
 
-    if option == .Silent {
+    switch option {
+    case .Share:
+        break
+    case .Silent:
         dev_null = win.CreateFileW(
             win.utf8_to_wstring("NUL"),
             win.GENERIC_WRITE,
@@ -100,24 +101,17 @@ _run_prog_async_unchecked :: proc(
         start_info.hStdOutput = dev_null
         start_info.hStdError = dev_null
         start_info.dwFlags |= win.STARTF_USESTDHANDLES
-    } else if option == .Capture {
+    case .Capture:
         pipe_init(&stdout_pipe, &sec_attrs) or_return
         pipe_init(&stderr_pipe, &sec_attrs) or_return
         start_info.hStdOutput = stdout_pipe.write
         start_info.hStdError = stderr_pipe.write
         start_info.dwFlags |= win.STARTF_USESTDHANDLES
-    }
-
-    defer if option == .Silent {
-        handle_close(dev_null)
-    }
-    defer if option == .Capture {
-        pipe_close_write(stderr_pipe)
-        pipe_close_write(stdout_pipe)
-    }
-    defer if err != nil {
-        pipe_close_read(stdout_pipe)
-        pipe_close_read(stderr_pipe)
+    case .Capture_Combine:
+        pipe_init(&stdout_pipe, &sec_attrs) or_return
+        start_info.hStdOutput = stdout_pipe.write
+        start_info.hStdError = stdout_pipe.write
+        start_info.dwFlags |= win.STARTF_USESTDHANDLES
     }
 
     cmd := combine_args(prog, args, context.temp_allocator)
@@ -125,7 +119,7 @@ _run_prog_async_unchecked :: proc(
 
     proc_info: win.PROCESS_INFORMATION
     // NOTE: Environment variables of the calling process are passed
-    if !win.CreateProcessW(
+    ok := win.CreateProcessW(
         nil,
         win.utf8_to_wstring(cmd),
         nil,
@@ -136,16 +130,49 @@ _run_prog_async_unchecked :: proc(
         nil,
         &start_info,
         &proc_info,
-    ) {
-        err = General_Error.Program_Not_Executed
-        return
-    }
-    process.execution_time = time.now()
-    process.alive = true
+    )
 
-    process.stdout_pipe = (option == .Capture) ? stdout_pipe : nil
-    process.stderr_pipe = (option == .Capture) ? stderr_pipe : nil
-    process.handle = {proc_info.hProcess, proc_info.hThread}
+    switch option {
+    case .Share:
+        break
+    case .Silent:
+        handle_close(dev_null) or_return
+    case .Capture:
+        pipe_close_write(stdout_pipe) or_return
+        pipe_close_write(stderr_pipe) or_return
+    case .Capture_Combine:
+        pipe_close_write(stdout_pipe) or_return
+    }
+
+    if ok {
+        process.execution_time = time.now()
+        process.alive = true
+
+        switch option {
+        case .Share, .Silent:
+            process.stdout_pipe = nil
+            process.stderr_pipe = nil
+        case .Capture:
+            process.stdout_pipe = stdout_pipe
+            process.stderr_pipe = stderr_pipe
+        case .Capture_Combine:
+            process.stdout_pipe = stdout_pipe
+            process.stderr_pipe = nil
+        }
+        process.handle = {proc_info.hProcess, proc_info.hThread}
+    } else {
+        switch option {
+        case .Share, .Silent:
+            break
+        case .Capture:
+            pipe_close_read(stdout_pipe) or_return
+            pipe_close_read(stderr_pipe) or_return
+        case .Capture_Combine:
+            pipe_close_read(stdout_pipe) or_return
+        }
+        err = General_Error.Spawn_Failed
+    }
+
     return
 }
 
