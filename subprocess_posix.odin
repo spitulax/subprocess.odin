@@ -11,7 +11,7 @@ import "core:time"
 
 
 FAIL :: -1
-EARLY_EXIT_CODE :: 211
+EARLY_EXIT_CODE :: 127
 
 
 Exit_Code :: distinct u32
@@ -28,7 +28,7 @@ _is_success :: proc(exit: Process_Exit) -> bool {
 
 
 _process_wait :: proc(
-    self: Process,
+    self: ^Process,
     alloc: Alloc,
     loc: Loc,
 ) -> (
@@ -38,6 +38,7 @@ _process_wait :: proc(
     defer if err != nil {
         process_result_destroy(&result)
     }
+    defer self.alive = false
 
     for {
         status: i32
@@ -120,7 +121,6 @@ _run_prog_async_unchecked :: proc(
     if child_pid == 0 {
         wrap :: proc(err: Error) {
             if err != nil {
-                // TODO: very naïve way to do this
                 os.exit(EARLY_EXIT_CODE)
             }
         }
@@ -148,22 +148,18 @@ _run_prog_async_unchecked :: proc(
         }
         unreachable()
     }
-    execution_time := time.now()
+    process.execution_time = time.now()
+    process.alive = true
 
     if option == .Silent {
         fd_close(dev_null) or_return
     }
 
     delete(argv)
-    maybe_stdout_pipe: Maybe(_Pipe) = (option == .Capture) ? stdout_pipe : nil
-    maybe_stderr_pipe: Maybe(_Pipe) = (option == .Capture) ? stderr_pipe : nil
-    return Process {
-            handle = child_pid,
-            execution_time = execution_time,
-            stdout_pipe = maybe_stdout_pipe,
-            stderr_pipe = maybe_stderr_pipe,
-        },
-        err
+    process.stdout_pipe = (option == .Capture) ? stdout_pipe : nil
+    process.stderr_pipe = (option == .Capture) ? stderr_pipe : nil
+    process.handle = child_pid
+    return
 }
 
 

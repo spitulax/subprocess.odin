@@ -1,6 +1,8 @@
 package subprocess
 
+// TODO: Add option to combine stdout and stderr
 // TODO: Specify additional environment variable in `run_*` functions
+// TODO: Add option to not inherit environment
 // TODO: Make sending to stdin without user input possible
 // MAYBE: Add a function that invokes the respective system's shell like libc's `system()`
 
@@ -119,12 +121,13 @@ is_success :: proc(exit: Process_Exit) -> bool {
 Process :: struct {
     handle:         Process_Handle,
     execution_time: time.Time,
+    alive:          bool,
     stdout_pipe:    Maybe(Pipe),
     stderr_pipe:    Maybe(Pipe),
 }
 
 process_wait :: proc(
-    self: Process,
+    self: ^Process,
     alloc := context.allocator,
     loc := #caller_location,
 ) -> (
@@ -146,8 +149,8 @@ process_wait_many :: proc(
     },
 ) {
     res = make_soa_slice(type_of(res), len(selves), alloc, loc)
-    for process, i in selves {
-        process_result, process_err := process_wait(process, alloc, loc)
+    for &process, i in selves {
+        process_result, process_err := process_wait(&process, alloc, loc)
         res[i].result = process_result
         res[i].err = process_err
     }
@@ -243,7 +246,7 @@ run_prog_sync_unchecked :: proc(
     err: Error,
 ) {
     process := run_prog_async_unchecked(prog, args, option, loc) or_return
-    return process_wait(process, alloc, loc)
+    return process_wait(&process, alloc, loc)
 }
 
 // `result` is empty or {} if `cmd` is not found
@@ -262,7 +265,7 @@ run_prog_sync_checked :: proc(
         return
     }
     process := run_prog_async_unchecked(prog.name, args, option, loc) or_return
-    return process_wait(process, alloc, loc)
+    return process_wait(&process, alloc, loc)
 }
 
 
@@ -451,8 +454,8 @@ command_wait_all :: proc(
     },
 ) {
     res = make_soa_slice(type_of(res), len(self.running_processes), alloc, loc)
-    for process, i in self.running_processes {
-        process_result, process_err := process_wait(process, self.alloc, loc)
+    for &process, i in self.running_processes {
+        process_result, process_err := process_wait(&process, self.alloc, loc)
         append(&self.results, process_result, loc)
         res[i].result = &self.results[len(self.results) - 1]
         res[i].err = process_err

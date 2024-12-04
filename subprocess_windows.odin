@@ -20,7 +20,7 @@ _is_success :: proc(exit: Process_Exit) -> bool {
 
 
 _process_wait :: proc(
-    self: Process,
+    self: ^Process,
     alloc: Alloc,
     loc: Loc,
 ) -> (
@@ -30,6 +30,7 @@ _process_wait :: proc(
     defer if err != nil {
         process_result_destroy(&result)
     }
+    defer self.alive = false
 
     if res := win.WaitForSingleObject(self.handle.process, win.INFINITE);
        res == win.WAIT_OBJECT_0 {
@@ -139,17 +140,13 @@ _run_prog_async_unchecked :: proc(
         err = General_Error.Program_Not_Executed
         return
     }
-    execution_time := time.now()
+    process.execution_time = time.now()
+    process.alive = true
 
-    maybe_stdout_pipe: Maybe(_Pipe) = (option == .Capture) ? stdout_pipe : nil
-    maybe_stderr_pipe: Maybe(_Pipe) = (option == .Capture) ? stderr_pipe : nil
-    return Process {
-            handle = {proc_info.hProcess, proc_info.hThread},
-            execution_time = execution_time,
-            stdout_pipe = maybe_stdout_pipe,
-            stderr_pipe = maybe_stderr_pipe,
-        },
-        err
+    process.stdout_pipe = (option == .Capture) ? stdout_pipe : nil
+    process.stderr_pipe = (option == .Capture) ? stderr_pipe : nil
+    process.handle = {proc_info.hProcess, proc_info.hThread}
+    return
 }
 
 
