@@ -166,7 +166,7 @@ process_wait_many :: proc(
 
 
 Process_Result :: struct {
-    exit:     Process_Exit, // nil on success
+    exit:     Process_Exit,
     duration: time.Duration,
     // I didn't make them both Maybe() for "convenience" when accessing them
     stdout:   string, // stdout and stderr are empty if run_prog_* was called with .Capture
@@ -460,7 +460,7 @@ command_destroy :: proc(self: ^Command, loc := #caller_location) {
 }
 
 command_run_sync :: proc(
-    self: ^Command,
+    self: Command,
     out_opt: Output_Option = .Share,
     in_opt: Input_Option = .Share,
     loc := #caller_location,
@@ -472,7 +472,7 @@ command_run_sync :: proc(
 }
 
 command_run_async :: proc(
-    self: ^Command,
+    self: Command,
     out_opt: Output_Option = .Share,
     in_opt: Input_Option = .Share,
     loc := #caller_location,

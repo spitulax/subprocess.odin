@@ -17,9 +17,9 @@ command_builder :: proc(t: ^testing.T) {
     {
         results: [3]lib.Process_Result
         oks: [3]bool
-        results[0], oks[0] = lib.unwrap(lib.command_run_sync(&cmd, .Share))
-        results[1], oks[1] = lib.unwrap(lib.command_run_sync(&cmd, .Capture))
-        results[2], oks[2] = lib.unwrap(lib.command_run_sync(&cmd, .Silent))
+        results[0], oks[0] = lib.unwrap(lib.command_run_sync(cmd, .Share))
+        results[1], oks[1] = lib.unwrap(lib.command_run_sync(cmd, .Capture))
+        results[2], oks[2] = lib.unwrap(lib.command_run_sync(cmd, .Silent))
         defer lib.process_result_destroy_many(results[:])
         for &x, i in results {
             if !oks[i] {
@@ -35,7 +35,7 @@ command_builder :: proc(t: ^testing.T) {
         PROCESSES :: 5
         processes: [PROCESSES]lib.Process
         for i in 0 ..< PROCESSES {
-            processes[i] = lib.unwrap(lib.command_run_async(&cmd, .Capture))
+            processes[i] = lib.unwrap(lib.command_run_async(cmd, .Capture))
         }
         res := lib.process_wait_many(processes[:])
         defer {

@@ -34,29 +34,28 @@ stdin :: proc(t: ^testing.T) {
     lib.command_append(&cmd, "-c")
     lib.command_append(&cmd, "read TEST && echo $TEST")
 
-    if process, process_ok := lib.unwrap(lib.command_run_async(&cmd, .Share, .Pipe)); process_ok {
+    if process, process_ok := lib.unwrap(lib.command_run_async(cmd, .Share, .Pipe)); process_ok {
         if result, ok := run_pipe(t, &process); ok {
             testing.expect_value(t, result.stdout, "")
             testing.expect_value(t, result.stderr, "")
             lib.process_result_destroy(&result)
         }
     }
-    if process, process_ok := lib.unwrap(lib.command_run_async(&cmd, .Silent, .Pipe)); process_ok {
+    if process, process_ok := lib.unwrap(lib.command_run_async(cmd, .Silent, .Pipe)); process_ok {
         if result, ok := run_pipe(t, &process); ok {
             testing.expect_value(t, result.stdout, "")
             testing.expect_value(t, result.stderr, "")
             lib.process_result_destroy(&result)
         }
     }
-    if process, process_ok := lib.unwrap(lib.command_run_async(&cmd, .Capture, .Pipe));
-       process_ok {
+    if process, process_ok := lib.unwrap(lib.command_run_async(cmd, .Capture, .Pipe)); process_ok {
         if result, ok := run_pipe(t, &process); ok {
             testing.expect_value(t, result.stdout, "Hello World" + NL)
             testing.expect_value(t, result.stderr, "")
             lib.process_result_destroy(&result)
         }
     }
-    if process, process_ok := lib.unwrap(lib.command_run_async(&cmd, .Capture_Combine, .Pipe));
+    if process, process_ok := lib.unwrap(lib.command_run_async(cmd, .Capture_Combine, .Pipe));
        process_ok {
         if result, ok := run_pipe(t, &process); ok {
             testing.expect_value(t, result.stdout, "Hello World" + NL)
@@ -65,19 +64,19 @@ stdin :: proc(t: ^testing.T) {
         }
     }
 
-    if process, process_ok := lib.unwrap(lib.command_run_async(&cmd, .Share, .Nothing));
+    if process, process_ok := lib.unwrap(lib.command_run_async(cmd, .Share, .Nothing));
        process_ok {
         run_nothing(t, &process)
     }
-    if process, process_ok := lib.unwrap(lib.command_run_async(&cmd, .Silent, .Nothing));
+    if process, process_ok := lib.unwrap(lib.command_run_async(cmd, .Silent, .Nothing));
        process_ok {
         run_nothing(t, &process)
     }
-    if process, process_ok := lib.unwrap(lib.command_run_async(&cmd, .Capture, .Nothing));
+    if process, process_ok := lib.unwrap(lib.command_run_async(cmd, .Capture, .Nothing));
        process_ok {
         run_nothing(t, &process)
     }
-    if process, process_ok := lib.unwrap(lib.command_run_async(&cmd, .Capture_Combine, .Nothing));
+    if process, process_ok := lib.unwrap(lib.command_run_async(cmd, .Capture_Combine, .Nothing));
        process_ok {
         run_nothing(t, &process)
     }
