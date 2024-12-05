@@ -232,11 +232,17 @@ _program :: proc($name: string, loc: Loc) -> (found: bool) {
 
 _Internal_Error :: enum u8 {
     None = 0,
+    // Failed to initialise the pipe
     Pipe_Init_Failed,
+    // Failed to close the pipe
     Pipe_Close_Failed,
+    // Failed to redirect pipes
     Pipe_Redirect_Failed,
+    // Failed to read from the pipe
     Pipe_Read_Failed,
+    // Failed to close the file descriptor
     Fd_Close_Failed,
+    // Failed to redirect file descriptors
     Fd_Redirect_Failed,
 }
 

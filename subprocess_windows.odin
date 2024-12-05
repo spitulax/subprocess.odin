@@ -130,7 +130,7 @@ _run_prog_async_unchecked :: proc(
                 win.OPEN_EXISTING,
                 win.FILE_ATTRIBUTE_NORMAL,
                 nil,
-                )
+            )
             assert(dev_null != win.INVALID_HANDLE_VALUE, "could not open NUL device")
         }
         start_info.hStdInput = dev_null
@@ -139,7 +139,9 @@ _run_prog_async_unchecked :: proc(
         start_info.hStdInput = stdin_pipe.read
     }
 
-    assert(start_info.hStdOutput != nil && start_info.hStdError != nil && start_info.hStdInput != nil)
+    assert(
+        start_info.hStdOutput != nil && start_info.hStdError != nil && start_info.hStdInput != nil,
+    )
     start_info.dwFlags |= win.STARTF_USESTDHANDLES
 
     cmd := combine_args(prog, args, context.temp_allocator)
@@ -234,9 +236,13 @@ _program :: proc($name: string, loc: Loc) -> (found: bool) {
 
 _Internal_Error :: enum u8 {
     None = 0,
+    // Failed to initialise the pipe
     Pipe_Init_Failed,
+    // Failed to close the pipe
     Pipe_Close_Failed,
+    // Failed to read from the pipe
     Pipe_Read_Failed,
+    // Failed to close the file handle
     Handle_Close_Failed,
 }
 

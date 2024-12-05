@@ -1,6 +1,6 @@
 package subprocess
 
-// TODO: `program` doesn't work with file paths in Windows
+// FIXME: `program` doesn't work with file paths in Windows
 // TODO: Specify additional environment variable in `run_*` functions
 // TODO: Add option to not inherit environment
 // MAYBE: store the location of where `run_prog*` is called in `Process`
@@ -28,16 +28,21 @@ Flags_Set :: bit_set[Flags]
 Error :: union #shared_nil {
     General_Error,
 
-    // Target specific stuff
+    // Target-specific stuff
     Internal_Error,
 }
 
 General_Error :: enum u8 {
     None = 0,
+    // Program was not found in in PATH variable or relative from the current directory
     Program_Not_Found,
+    // Process could not exit normally
     Process_Cannot_Exit,
+    // The calling procedure returned before the program is executed
     Program_Not_Executed,
+    // The system failed to spawn the process
     Spawn_Failed,
+    // Failed to write into the pipe
     Pipe_Write_Failed,
 }
 
@@ -330,7 +335,7 @@ program :: proc($name: string, loc := #caller_location) -> Program {
 program_check :: proc($name: string, loc := #caller_location) -> (prog: Program, err: Error) {
     flags_temp := g_flags
     default_flags_disable({.Echo_Commands, .Echo_Commands_Debug})
-    // TODO: make `_program` return up the error
+    // FIXME: make `_program` return up the error
     found := _program(name, loc)
     g_flags = flags_temp
     if !found {
