@@ -20,8 +20,12 @@ Default_Logger_Opts :: log.Options{.Short_File_Path, .Line}
 
 when ODIN_OS in POSIX_OS {
     NL :: "\n"
+    SH :: "sh"
+    CMD :: "-c" // shell flag to execute the next argument as a command
 } else when ODIN_OS in WINDOWS_OS {
     NL :: "\r\n"
+    SH :: "cmd"
+    CMD :: "/C"
 }
 
 
@@ -175,10 +179,21 @@ append_concat_string_sep :: proc(w: io.Writer, strs: []string, sep: string) {
 }
 
 
-print_cmd :: proc(out_opt: Output_Option, in_opt: Input_Option, prog: string, args: []string, loc: Loc) {
+print_cmd :: proc(
+    out_opt: Output_Option,
+    in_opt: Input_Option,
+    prog: string,
+    args: []string,
+    loc: Loc,
+) {
     runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
     if g_flags & {.Echo_Commands, .Echo_Commands_Debug} != {} {
-        msg := fmt.tprintf("(%v|%v) %s", out_opt, in_opt, combine_args(prog, args, context.temp_allocator))
+        msg := fmt.tprintf(
+            "(%v|%v) %s",
+            out_opt,
+            in_opt,
+            combine_args(prog, args, context.temp_allocator),
+        )
         if .Echo_Commands in g_flags {
             log_info(msg, loc = loc)
         } else if .Echo_Commands_Debug in g_flags {

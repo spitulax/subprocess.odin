@@ -3,7 +3,8 @@ package subprocess
 // TODO: `program` doesn't work with file paths in Windows
 // TODO: Specify additional environment variable in `run_*` functions
 // TODO: Add option to not inherit environment
-// MAYBE: Add a function that invokes the respective system's shell like libc's `system()`
+// MAYBE: store the location of where `run_prog*` is called in `Process`
+// then store it and the location of `process_wait*` in `Process_Result`
 
 import "base:intrinsics"
 import "core:log"
@@ -285,6 +286,31 @@ run_prog_sync_checked :: proc(
     }
     process := run_prog_async_unchecked(prog.name, args, out_opt, in_opt, loc) or_return
     return process_wait(&process, alloc, loc)
+}
+
+run_shell_async :: proc(
+    cmd: string,
+    out_opt: Output_Option = .Share,
+    in_opt: Input_Option = .Share,
+    loc := #caller_location,
+) -> (
+    process: Process,
+    err: Error,
+) {
+    return run_prog_async(SH, {CMD, cmd}, out_opt, in_opt, loc)
+}
+
+run_shell_sync :: proc(
+    cmd: string,
+    out_opt: Output_Option = .Share,
+    in_opt: Input_Option = .Share,
+    alloc := context.allocator,
+    loc := #caller_location,
+) -> (
+    result: Process_Result,
+    err: Error,
+) {
+    return run_prog_sync(SH, {CMD, cmd}, out_opt, in_opt, alloc, loc)
 }
 
 
