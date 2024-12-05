@@ -335,13 +335,9 @@ program :: proc($name: string, loc := #caller_location) -> Program {
 program_check :: proc($name: string, loc := #caller_location) -> (prog: Program, err: Error) {
     flags_temp := g_flags
     default_flags_disable({.Echo_Commands, .Echo_Commands_Debug})
-    // FIXME: make `_program` return up the error
-    found := _program(name, loc)
+    err = _program(name, loc)
     g_flags = flags_temp
-    if !found {
-        err = General_Error.Program_Not_Found
-    }
-    return Program{found, name}, err
+    return Program{err == nil, name}, err
 }
 
 

@@ -217,16 +217,19 @@ _run_prog_async_unchecked :: proc(
 }
 
 
-_program :: proc($name: string, loc: Loc) -> (found: bool) {
-    res, err := run_prog_sync_unchecked(
+_program :: proc($name: string, loc: Loc) -> Error {
+    if res, err := run_prog_sync_unchecked(
         "sh",
         {"-c", "command -v " + name},
         .Silent,
         .Share,
         context.temp_allocator,
         loc,
-    )
-    return process_result_success(res) && err == nil
+    ); !process_result_success(res) {
+        return General_Error.Program_Not_Found
+    } else {
+        return err
+    }
 }
 
 
