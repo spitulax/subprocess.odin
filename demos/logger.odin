@@ -1,13 +1,13 @@
 package demos
 
-import lib ".."
+import sp ".."
 import "core:log"
 
 main :: proc() {
     // No allocations
-    context.logger = lib.create_logger()
+    context.logger = sp.create_logger()
 
-    lib.log_info("Hello!")
+    sp.log_info("Hello!")
     // Now it's the same as
     log.info("Hello!")
 
