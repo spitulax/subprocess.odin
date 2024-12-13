@@ -13,11 +13,11 @@ compiler :: proc(t: ^testing.T) {
     lib.default_flags_enable({.Use_Context_Logger, .Echo_Commands})
 
     cc := lib.program("gcc")
-    testing.expect(
+    if !testing.expect(
         t,
         cc.found,
         "GCC was not found. Run this test with GCC available (use mingw in Windows)",
-    )
+    ) {return}
 
     EXEC_PATH :: "/main.exe" when ODIN_OS in lib.WINDOWS_OS else "/main"
 
@@ -32,9 +32,9 @@ compiler :: proc(t: ^testing.T) {
         }
     }
 
-    //compiled_prog := lib.program(RATS_DIR + EXEC_PATH)
-    //if !testing.expect(t, compiled_prog.found) {return}
-    result2, result2_ok := lib.unwrap(lib.run_prog_sync(RATS_DIR + EXEC_PATH, {}, .Capture))
+    compiled_prog := lib.program(RATS_DIR + EXEC_PATH)
+    if !testing.expect(t, compiled_prog.found) {return}
+    result2, result2_ok := lib.unwrap(lib.run_prog_sync(compiled_prog, {}, .Capture))
     defer lib.process_result_destroy(&result2)
     if result2_ok {
         if !lib.process_result_success(result2) {

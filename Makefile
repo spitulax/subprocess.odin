@@ -12,7 +12,7 @@ endif
 
 .PHONY: test demo
 
-REPO_ROOT=$(realpath ./.)
+REPO_ROOT := $(realpath ./.)
 
 ODIN ?= odin
 
@@ -36,7 +36,7 @@ ifdef NAME
 endif
 
 test:
-	$(ODIN) test tests $(ARGS) -define:REPO_ROOT=$(REPO_ROOT)
+	$(ODIN) test tests $(ARGS) -define:REPO_ROOT="$(REPO_ROOT)"
 
 demo:
-	make -B -C $(REPO_ROOT)/demos run $(DEMO_ARGS)
+	make -B -C "$(REPO_ROOT)/demos" run $(DEMO_ARGS)

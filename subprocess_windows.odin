@@ -3,6 +3,9 @@
 package subprocess
 
 import "base:runtime"
+import "core:fmt"
+import "core:os"
+import path "core:path/filepath"
 import "core:strings"
 import win "core:sys/windows"
 import "core:time"
@@ -221,15 +224,22 @@ _run_prog_async_unchecked :: proc(
 }
 
 
-_program :: proc($name: string, loc: Loc) -> Error {
+_program :: proc(name: string, loc: Loc) -> Error {
+    runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
     if res, err := run_prog_sync_unchecked(
         "cmd",
-        {"/C", "where " + name + " && exit 0 || exit 1"},
+        {"/C", fmt.tprint("where", name, " && exit 0 || exit 1")},
         .Silent,
         .Share,
         context.temp_allocator,
         loc,
     ); !process_result_success(res) {
+        if ext := path.ext(strings.to_lower(name, context.temp_allocator)); os.exists(name) {
+            switch ext {
+            case ".exe", ".com", ".bat", ".cmd":
+                return nil
+            }
+        }
         return General_Error.Program_Not_Found
     } else {
         return err

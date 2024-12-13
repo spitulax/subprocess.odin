@@ -217,10 +217,11 @@ _run_prog_async_unchecked :: proc(
 }
 
 
-_program :: proc($name: string, loc: Loc) -> Error {
+_program :: proc(name: string, loc: Loc) -> Error {
+    runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
     if res, err := run_prog_sync_unchecked(
         "sh",
-        {"-c", "command -v " + name},
+        {"-c", fmt.tprint("command -v", name)},
         .Silent,
         .Share,
         context.temp_allocator,

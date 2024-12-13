@@ -1,6 +1,5 @@
 package subprocess
 
-// FIXME: `program` doesn't work with file paths in Windows
 // TODO: Specify additional environment variable in `run_*` functions
 // TODO: Add option to not inherit environment
 // MAYBE: store the location of where `run_prog*` is called in `Process`
@@ -326,13 +325,13 @@ Program :: struct {
 }
 
 @(require_results)
-program :: proc($name: string, loc := #caller_location) -> Program {
+program :: proc(name: string, loc := #caller_location) -> Program {
     prog, _ := program_check(name, loc)
     return prog
 }
 
 @(require_results)
-program_check :: proc($name: string, loc := #caller_location) -> (prog: Program, err: Error) {
+program_check :: proc(name: string, loc := #caller_location) -> (prog: Program, err: Error) {
     flags_temp := g_flags
     default_flags_disable({.Echo_Commands, .Echo_Commands_Debug})
     err = _program(name, loc)
