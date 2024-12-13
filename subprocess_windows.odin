@@ -72,8 +72,10 @@ _process_wait :: proc(
 _run_prog_async_unchecked :: proc(
     prog: string,
     args: []string,
-    out_opt: Output_Option = .Share,
-    in_opt: Input_Option = .Share,
+    out_opt: Output_Option,
+    in_opt: Input_Option,
+    inherit_env: bool,
+    extra_env: []string,
     loc: Loc,
 ) -> (
     process: Process,
@@ -150,16 +152,46 @@ _run_prog_async_unchecked :: proc(
     cmd := combine_args(prog, args, context.temp_allocator)
     print_cmd(out_opt, in_opt, prog, args, loc)
 
+    env := make([dynamic]win.WCHAR)
+    defer delete(env)
+    if inherit_env {
+        sysenvs := ([^]win.WCHAR)(win.GetEnvironmentStringsW())
+        if sysenvs == nil {
+            err = General_Error.Spawn_Failed
+            return
+        }
+        defer win.FreeEnvironmentStringsW(sysenvs)
+        for from, i := 0, 0; true; i += 1 {
+            if c := sysenvs[i]; c == 0 {
+                if i <= from {
+                    break
+                }
+                for char in sysenvs[from:i] {
+                    append(&env, char)
+                }
+                append(&env, 0)
+                from = i + 1
+            }
+        }
+    }
+    for x in extra_env {
+        wstr := win.utf8_to_wstring(x)
+        for i := 0; wstr[i] != 0; i += 1 {
+            append(&env, wstr[i])
+        }
+        append(&env, 0)
+    }
+    append(&env, 0)
+
     proc_info: win.PROCESS_INFORMATION
-    // NOTE: Environment variables of the calling process are passed
     ok := win.CreateProcessW(
         nil,
         win.utf8_to_wstring(cmd),
         nil,
         nil,
         true,
-        0,
-        nil,
+        win.CREATE_UNICODE_ENVIRONMENT,
+        raw_data(env),
         nil,
         &start_info,
         &proc_info,
@@ -230,9 +262,8 @@ _program :: proc(name: string, loc: Loc) -> Error {
         "cmd",
         {"/C", fmt.tprint("where", name, " && exit 0 || exit 1")},
         .Silent,
-        .Share,
-        context.temp_allocator,
-        loc,
+        alloc = context.temp_allocator,
+        loc = loc,
     ); !process_result_success(res) {
         if ext := path.ext(strings.to_lower(name, context.temp_allocator)); os.exists(name) {
             switch ext {

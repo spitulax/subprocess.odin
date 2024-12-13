@@ -3,6 +3,7 @@ package tests
 import lib ".."
 import "base:runtime"
 import "core:fmt"
+import "core:strings"
 import "core:testing"
 
 
@@ -14,6 +15,10 @@ when ODIN_OS in lib.POSIX_OS {
     NL :: "\r\n"
     SH :: "cmd"
     CMD :: "/C"
+}
+
+trim_nl :: proc(s: string) -> string {
+    return strings.trim_suffix(s, NL)
 }
 
 expect_success :: proc(t: ^testing.T, result: lib.Process_Result) -> bool {

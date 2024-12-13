@@ -1,7 +1,5 @@
 package subprocess
 
-// TODO: Specify additional environment variable in `run_*` functions
-// TODO: Add option to not inherit environment
 // MAYBE: store the location of where `run_prog*` is called in `Process`
 // then store it and the location of `process_wait*` in `Process_Result`
 
@@ -231,12 +229,14 @@ run_prog_async_unchecked :: proc(
     args: []string = nil,
     out_opt: Output_Option = .Share,
     in_opt: Input_Option = .Share,
+    inherit_env: bool = true,
+    extra_env: []string = {},
     loc := #caller_location,
 ) -> (
     process: Process,
     err: Error,
 ) {
-    return _run_prog_async_unchecked(prog, args, out_opt, in_opt, loc)
+    return _run_prog_async_unchecked(prog, args, out_opt, in_opt, inherit_env, extra_env, loc)
 }
 
 // DOCS: `process` is empty or {} if `cmd` is not found
@@ -245,6 +245,8 @@ run_prog_async_checked :: proc(
     args: []string = nil,
     out_opt: Output_Option = .Share,
     in_opt: Input_Option = .Share,
+    inherit_env: bool = true,
+    extra_env: []string = {},
     loc := #caller_location,
 ) -> (
     process: Process,
@@ -254,7 +256,7 @@ run_prog_async_checked :: proc(
         err = General_Error.Program_Not_Found
         return
     }
-    return _run_prog_async_unchecked(prog.name, args, out_opt, in_opt, loc)
+    return _run_prog_async_unchecked(prog.name, args, out_opt, in_opt, inherit_env, extra_env, loc)
 }
 
 run_prog_sync_unchecked :: proc(
@@ -262,13 +264,23 @@ run_prog_sync_unchecked :: proc(
     args: []string = nil,
     out_opt: Output_Option = .Share,
     in_opt: Input_Option = .Share,
+    inherit_env: bool = true,
+    extra_env: []string = {},
     alloc := context.allocator,
     loc := #caller_location,
 ) -> (
     result: Process_Result,
     err: Error,
 ) {
-    process := run_prog_async_unchecked(prog, args, out_opt, in_opt, loc) or_return
+    process := run_prog_async_unchecked(
+        prog,
+        args,
+        out_opt,
+        in_opt,
+        inherit_env,
+        extra_env,
+        loc,
+    ) or_return
     return process_wait(&process, alloc, loc)
 }
 
@@ -278,6 +290,8 @@ run_prog_sync_checked :: proc(
     args: []string = nil,
     out_opt: Output_Option = .Share,
     in_opt: Input_Option = .Share,
+    inherit_env: bool = true,
+    extra_env: []string = {},
     alloc := context.allocator,
     loc := #caller_location,
 ) -> (
@@ -288,7 +302,15 @@ run_prog_sync_checked :: proc(
         err = General_Error.Program_Not_Found
         return
     }
-    process := run_prog_async_unchecked(prog.name, args, out_opt, in_opt, loc) or_return
+    process := run_prog_async_unchecked(
+        prog.name,
+        args,
+        out_opt,
+        in_opt,
+        inherit_env,
+        extra_env,
+        loc,
+    ) or_return
     return process_wait(&process, alloc, loc)
 }
 
@@ -296,12 +318,14 @@ run_shell_async :: proc(
     cmd: string,
     out_opt: Output_Option = .Share,
     in_opt: Input_Option = .Share,
+    inherit_env: bool = true,
+    extra_env: []string = {},
     loc := #caller_location,
 ) -> (
     process: Process,
     err: Error,
 ) {
-    return run_prog_async(SH, {CMD, cmd}, out_opt, in_opt, loc)
+    return run_prog_async(SH, {CMD, cmd}, out_opt, in_opt, inherit_env, extra_env, loc)
 }
 
 run_shell_sync :: proc(
@@ -309,12 +333,14 @@ run_shell_sync :: proc(
     out_opt: Output_Option = .Share,
     in_opt: Input_Option = .Share,
     alloc := context.allocator,
+    inherit_env: bool = true,
+    extra_env: []string = {},
     loc := #caller_location,
 ) -> (
     result: Process_Result,
     err: Error,
 ) {
-    return run_prog_sync(SH, {CMD, cmd}, out_opt, in_opt, alloc, loc)
+    return run_prog_sync(SH, {CMD, cmd}, out_opt, in_opt, inherit_env, extra_env, alloc, loc)
 }
 
 
@@ -489,24 +515,37 @@ command_run_sync :: proc(
     self: Command,
     out_opt: Output_Option = .Share,
     in_opt: Input_Option = .Share,
+    inherit_env: bool = true,
+    extra_env: []string = {},
     loc := #caller_location,
 ) -> (
     result: Process_Result,
     err: Error,
 ) {
-    return run_prog_sync(self.prog, self.args[:], out_opt, in_opt, self.alloc, loc)
+    return run_prog_sync(
+        self.prog,
+        self.args[:],
+        out_opt,
+        in_opt,
+        inherit_env,
+        extra_env,
+        self.alloc,
+        loc,
+    )
 }
 
 command_run_async :: proc(
     self: Command,
     out_opt: Output_Option = .Share,
     in_opt: Input_Option = .Share,
+    inherit_env: bool = true,
+    extra_env: []string = {},
     loc := #caller_location,
 ) -> (
     process: Process,
     err: Error,
 ) {
-    return run_prog_async(self.prog, self.args[:], out_opt, in_opt, loc)
+    return run_prog_async(self.prog, self.args[:], out_opt, in_opt, inherit_env, extra_env, loc)
 }
 
 

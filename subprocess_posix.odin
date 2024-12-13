@@ -87,8 +87,10 @@ _process_wait :: proc(
 _run_prog_async_unchecked :: proc(
     prog: string,
     args: []string,
-    out_opt: Output_Option = .Share,
-    in_opt: Input_Option = .Share,
+    out_opt: Output_Option,
+    in_opt: Input_Option,
+    inherit_env: bool,
+    extra_env: []string,
     loc: Loc,
 ) -> (
     process: Process,
@@ -132,6 +134,17 @@ _run_prog_async_unchecked :: proc(
     argv[len(argv) - 1] = nil
 
     print_cmd(out_opt, in_opt, prog, args, loc)
+
+    env := make([dynamic]cstring)
+    if inherit_env {
+        for i, x := 0, posix.environ[0]; x != nil; i, x = i + 1, posix.environ[i] {
+            append(&env, x)
+        }
+    }
+    for x in extra_env {
+        append(&env, strings.clone_to_cstring(x, context.temp_allocator))
+    }
+    append(&env, nil)
 
     child_pid := posix.fork()
     if child_pid == FAIL {
@@ -185,7 +198,7 @@ _run_prog_async_unchecked :: proc(
             fd_close(dev_null) or_return
         }
 
-        if posix.execve(argv[0], raw_data(argv), posix.environ) == FAIL {
+        if posix.execve(argv[0], raw_data(argv), raw_data(env)) == FAIL {
             wrap(General_Error.Program_Not_Executed)
         }
         unreachable()
@@ -193,6 +206,7 @@ _run_prog_async_unchecked :: proc(
     process.execution_time = time.now()
     process.alive = true
 
+    delete(env)
     delete(argv)
 
     if out_opt == .Silent || in_opt == .Nothing {
@@ -223,9 +237,8 @@ _program :: proc(name: string, loc: Loc) -> Error {
         "sh",
         {"-c", fmt.tprint("command -v", name)},
         .Silent,
-        .Share,
-        context.temp_allocator,
-        loc,
+        alloc = context.temp_allocator,
+        loc = loc,
     ); !process_result_success(res) {
         return General_Error.Program_Not_Found
     } else {
