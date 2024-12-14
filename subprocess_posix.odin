@@ -326,8 +326,7 @@ pipe_read :: proc(
     INITIAL_BUF_SIZE :: 1024
     pipe_close_write(self) or_return
     total_bytes_read := 0
-    buf := make([dynamic]byte, INITIAL_BUF_SIZE)
-    defer delete(buf)
+    buf := make([dynamic]byte, INITIAL_BUF_SIZE, alloc)
     for {
         bytes_read := posix.read(
             self.struc.read,
@@ -345,8 +344,8 @@ pipe_read :: proc(
             resize(&buf, 2 * len(buf))
         }
     }
-    result = strings.clone_from_bytes(buf[:total_bytes_read], alloc, loc)
-    return
+    resize(&buf, total_bytes_read)
+    return string(buf[:]), nil
 }
 
 @(require_results)

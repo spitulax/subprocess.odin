@@ -149,24 +149,22 @@ ansi_reset_str :: proc() -> string {
 }
 
 ansi_graphic_str :: proc(options: ..string, alloc := context.allocator) -> string {
-    sb := strings.builder_make()
-    defer strings.builder_destroy(&sb)
+    sb := strings.builder_make(alloc)
     fmt.sbprint(&sb, ansi.CSI)
     append_concat_string_sep(strings.to_writer(&sb), options, ";")
     fmt.sbprint(&sb, ansi.SGR)
-    return strings.clone(strings.to_string(sb), alloc)
+    return strings.to_string(sb)
 }
 
 concat_string_sep :: proc(strs: []string, sep: string, alloc := context.allocator) -> string {
-    sb := strings.builder_make()
-    defer strings.builder_destroy(&sb)
+    sb := strings.builder_make(alloc)
     for str, i in strs {
         if i > 0 {
             fmt.sbprint(&sb, sep)
         }
         fmt.sbprint(&sb, str)
     }
-    return strings.clone(strings.to_string(sb), alloc)
+    return strings.to_string(sb)
 }
 
 append_concat_string_sep :: proc(w: io.Writer, strs: []string, sep: string) {
@@ -208,8 +206,7 @@ combine_args :: proc(
     alloc := context.allocator,
     loc := #caller_location,
 ) -> string {
-    b := strings.builder_make()
-    defer strings.builder_destroy(&b)
+    b := strings.builder_make(alloc)
     for i in -1 ..< len(args) {
         s: string
         if i == -1 {
@@ -243,6 +240,6 @@ combine_args :: proc(
         }
     }
 
-    return strings.clone(strings.to_string(b), alloc, loc)
+    return strings.to_string(b)
 }
 

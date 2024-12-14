@@ -327,8 +327,7 @@ pipe_read :: proc(
 ) {
     INITIAL_BUF_SIZE :: 1024
     total_bytes_read: win.DWORD
-    buf := make([dynamic]byte, INITIAL_BUF_SIZE)
-    defer delete(buf)
+    buf := make([dynamic]byte, INITIAL_BUF_SIZE, alloc)
     for {
         bytes_read: win.DWORD
         ok := win.ReadFile(
@@ -349,8 +348,8 @@ pipe_read :: proc(
             resize(&buf, 2 * len(buf))
         }
     }
-    result = strings.clone_from_bytes(buf[:total_bytes_read], alloc, loc)
-    return
+    resize(&buf, total_bytes_read)
+    return string(buf[:]), nil
 }
 
 @(require_results)
