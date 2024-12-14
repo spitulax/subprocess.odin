@@ -49,7 +49,7 @@ run: $(TARGETS_LOC)
 	@$(foreach x, $^, \
 		echo -en '\033[1;34m'; \
 		echo '####################'; \
-		echo '# Running $<...'; \
+		echo '# Running $(x)...'; \
 		echo '####################'; \
 		echo -en '\033[0m'; \
 		./$(x); \
