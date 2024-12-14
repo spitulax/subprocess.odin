@@ -149,7 +149,7 @@ _run_prog_async_unchecked :: proc(
     )
     start_info.dwFlags |= win.STARTF_USESTDHANDLES
 
-    cmd := combine_args(prog, args, context.temp_allocator)
+    cmd := combine_args(prog, args, true, context.temp_allocator)
     print_cmd(out_opt, in_opt, prog, args, loc)
 
     env := make([dynamic]win.WCHAR)
@@ -328,6 +328,9 @@ pipe_read :: proc(
     INITIAL_BUF_SIZE :: 1024
     total_bytes_read: win.DWORD
     buf := make([dynamic]byte, INITIAL_BUF_SIZE, alloc)
+    defer if err != nil {
+        delete(buf)
+    }
     for {
         bytes_read: win.DWORD
         ok := win.ReadFile(

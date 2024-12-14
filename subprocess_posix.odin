@@ -327,6 +327,9 @@ pipe_read :: proc(
     pipe_close_write(self) or_return
     total_bytes_read := 0
     buf := make([dynamic]byte, INITIAL_BUF_SIZE, alloc)
+    defer if err != nil {
+        delete(buf)
+    }
     for {
         bytes_read := posix.read(
             self.struc.read,

@@ -190,7 +190,7 @@ print_cmd :: proc(
             "(%v|%v) %s",
             out_opt,
             in_opt,
-            combine_args(prog, args, context.temp_allocator),
+            combine_args(prog, args, false, context.temp_allocator),
         )
         if .Echo_Commands in g_flags {
             log_info(msg, loc = loc)
@@ -203,6 +203,7 @@ print_cmd :: proc(
 combine_args :: proc(
     prog: string,
     args: []string,
+    for_winapi: bool,
     alloc := context.allocator,
     loc := #caller_location,
 ) -> string {
@@ -226,7 +227,9 @@ combine_args :: proc(
         for c, j in s {
             switch c {
             case '\\':
-                if s[j + 1] == '"' {
+                if !for_winapi {
+                    strings.write_rune(&b, '\\')
+                } else if s[j + 1] == '"' {
                     strings.write_rune(&b, '\\')
                 }
             case '"':
