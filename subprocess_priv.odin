@@ -271,9 +271,6 @@ combine_args :: proc(
         }
     }
 
-    log_debug(strings.to_string(b))
-
-
     return strings.to_string(b)
 }
 
