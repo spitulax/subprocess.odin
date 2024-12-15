@@ -4,6 +4,7 @@ package subprocess
 
 import "base:runtime"
 import "core:fmt"
+import "core:mem"
 import "core:os"
 import "core:strings"
 import "core:sys/posix"
@@ -11,7 +12,7 @@ import "core:time"
 
 
 FAIL :: -1
-EARLY_EXIT_CODE :: 127
+EARLY_EXIT_CODE :: 211 // Just a random number that may never be used by any program
 
 
 Exit_Code :: distinct u32
@@ -40,7 +41,45 @@ _process_wait :: proc(
     }
     defer self.alive = false
 
+    stdout_pipe, stdout_pipe_ok := self.stdout_pipe.?
+    stderr_pipe, stderr_pipe_ok := self.stderr_pipe.?
+    stdin_pipe, stdin_pipe_ok := self.stdin_pipe.?
+    stdout_buf, stderr_buf: [dynamic]byte
+    stdout_bytes_read, stderr_bytes_read: uint
+    INITIAL_BUF_SIZE :: 1 * mem.Kilobyte
+    if stdout_pipe_ok {
+        pipe_close_write(&stdout_pipe) or_return
+        stdout_buf = make([dynamic]byte, INITIAL_BUF_SIZE, alloc)
+    }
+    if stderr_pipe_ok {
+        pipe_close_write(&stderr_pipe) or_return
+        stderr_buf = make([dynamic]byte, INITIAL_BUF_SIZE, alloc)
+    }
+
     for {
+        for {
+            bytes_read: uint
+            if stdout_pipe_ok {
+                bytes_read += pipe_read(
+                    &stdout_pipe,
+                    &stdout_buf,
+                    &stdout_bytes_read,
+                    loc,
+                ) or_return
+            }
+            if stderr_pipe_ok {
+                bytes_read += pipe_read(
+                    &stderr_pipe,
+                    &stderr_buf,
+                    &stderr_bytes_read,
+                    loc,
+                ) or_return
+            }
+            if bytes_read == 0 {
+                break
+            }
+        }
+
         status: i32
         child_pid := posix.waitpid(self.handle, &status, {.UNTRACED, .CONTINUED})
         if child_pid == FAIL {
@@ -49,16 +88,15 @@ _process_wait :: proc(
         result.duration = time.since(self.execution_time)
 
         if posix.WIFSIGNALED(status) || posix.WIFEXITED(status) {
-            stdout_pipe, stdout_pipe_ok := self.stdout_pipe.?
-            stderr_pipe, stderr_pipe_ok := self.stderr_pipe.?
-            stdin_pipe, stdin_pipe_ok := self.stdin_pipe.?
             if stdout_pipe_ok {
-                result.stdout = pipe_read(&stdout_pipe, loc, alloc) or_return
                 pipe_close_read(&stdout_pipe) or_return
+                result.stdout = strings.clone_from_bytes(stdout_buf[:stdout_bytes_read], alloc)
+                delete(stdout_buf)
             }
             if stderr_pipe_ok {
-                result.stderr = pipe_read(&stderr_pipe, loc, alloc) or_return
                 pipe_close_read(&stderr_pipe) or_return
+                result.stderr = strings.clone_from_bytes(stderr_buf[:stderr_bytes_read], alloc)
+                delete(stderr_buf)
             }
             if stdin_pipe_ok {
                 pipe_close_write(&stdin_pipe) or_return
@@ -317,38 +355,35 @@ pipe_redirect_write :: proc(self: ^Pipe, newfd: posix.FD) -> (err: Error) {
 @(require_results)
 pipe_read :: proc(
     self: ^Pipe,
+    buf: ^[dynamic]byte,
+    total_bytes_read: ^uint,
     loc: Loc,
-    alloc := context.allocator,
 ) -> (
-    result: string,
+    bytes_read: uint,
     err: Error,
 ) {
-    INITIAL_BUF_SIZE :: 1024
-    pipe_close_write(self) or_return
-    total_bytes_read := 0
-    buf := make([dynamic]byte, INITIAL_BUF_SIZE, alloc)
+    init_len := total_bytes_read^
     defer if err != nil {
-        delete(buf)
+        resize(buf, init_len)
     }
     for {
-        bytes_read := posix.read(
+        loop_bytes_read := posix.read(
             self.struc.read,
-            raw_data(buf[total_bytes_read:]),
-            len(buf[total_bytes_read:]),
+            raw_data(buf[total_bytes_read^:]),
+            len(buf[total_bytes_read^:]),
         )
-        if bytes_read == 0 {
+        if loop_bytes_read == 0 {
             break
-        } else if bytes_read == FAIL {
+        } else if loop_bytes_read == FAIL {
             err = Internal_Error.Pipe_Read_Failed
             return
         }
-        total_bytes_read += bytes_read
-        if total_bytes_read >= len(buf) {
-            resize(&buf, 2 * len(buf))
+        total_bytes_read^ += uint(loop_bytes_read)
+        if total_bytes_read^ >= len(buf) {
+            resize(buf, 2 * len(buf))
         }
     }
-    resize(&buf, total_bytes_read)
-    return string(buf[:]), nil
+    return total_bytes_read^ - init_len, nil
 }
 
 @(require_results)
