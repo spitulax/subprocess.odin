@@ -4,6 +4,7 @@ package subprocess
 
 import "base:runtime"
 import "core:fmt"
+import "core:mem"
 import "core:os"
 import path "core:path/filepath"
 import "core:strings"
@@ -35,6 +36,42 @@ _process_wait :: proc(
     }
     defer self.alive = false
 
+    stdout_pipe, stdout_pipe_ok := self.stdout_pipe.?
+    stderr_pipe, stderr_pipe_ok := self.stderr_pipe.?
+    stdin_pipe, stdin_pipe_ok := self.stdin_pipe.?
+    stdout_buf, stderr_buf: [dynamic]byte
+    stdout_bytes_read, stderr_bytes_read: uint
+    INITIAL_BUF_SIZE :: 1 * mem.Kilobyte
+    if stdout_pipe_ok {
+        stdout_buf = make([dynamic]byte, INITIAL_BUF_SIZE, alloc)
+    }
+    if stderr_pipe_ok {
+        stderr_buf = make([dynamic]byte, INITIAL_BUF_SIZE, alloc)
+    }
+
+    for {
+        bytes_read: uint
+        if stdout_pipe_ok {
+            bytes_read += pipe_read(
+                &stdout_pipe,
+                &stdout_buf,
+                &stdout_bytes_read,
+                loc,
+                ) or_return
+        }
+        if stderr_pipe_ok {
+            bytes_read += pipe_read(
+                &stderr_pipe,
+                &stderr_buf,
+                &stderr_bytes_read,
+                loc,
+                ) or_return
+        }
+        if bytes_read == 0 {
+            break
+        }
+    }
+
     if res := win.WaitForSingleObject(self.handle.process, win.INFINITE);
        res == win.WAIT_OBJECT_0 {
         result.duration = time.since(self.execution_time)
@@ -50,16 +87,13 @@ _process_wait :: proc(
         return
     }
 
-    stdout_pipe, stdout_pipe_ok := self.stdout_pipe.?
-    stderr_pipe, stderr_pipe_ok := self.stderr_pipe.?
-    stdin_pipe, stdin_pipe_ok := self.stdin_pipe.?
     if stdout_pipe_ok {
-        result.stdout = pipe_read(&stdout_pipe, loc, alloc) or_return
         pipe_close_read(stdout_pipe) or_return
+        result.stdout = strings.clone_from_bytes(stdout_buf[:stdout_bytes_read], alloc)
     }
     if stderr_pipe_ok {
-        result.stderr = pipe_read(&stderr_pipe, loc, alloc) or_return
         pipe_close_read(stderr_pipe) or_return
+        result.stderr = strings.clone_from_bytes(stderr_buf[:stderr_bytes_read], alloc)
     }
     if stdin_pipe_ok {
         pipe_close_write(stdin_pipe) or_return
@@ -332,40 +366,38 @@ pipe_close_write :: proc(self: Pipe) -> (err: Error) {
 @(require_results)
 pipe_read :: proc(
     self: ^Pipe,
+    buf: ^[dynamic]byte,
+    total_bytes_read: ^uint,
     loc: Loc,
-    alloc := context.allocator,
 ) -> (
-    result: string,
+    bytes_read: uint,
     err: Error,
 ) {
-    INITIAL_BUF_SIZE :: 1024
-    total_bytes_read: win.DWORD
-    buf := make([dynamic]byte, INITIAL_BUF_SIZE, alloc)
+    init_len := total_bytes_read^
     defer if err != nil {
-        delete(buf)
+        resize(buf, init_len)
     }
     for {
-        bytes_read: win.DWORD
+        loop_bytes_read: win.DWORD
         ok := win.ReadFile(
             self.read,
-            raw_data(buf[total_bytes_read:]),
-            win.DWORD(len(buf[total_bytes_read:])),
-            &bytes_read,
+            raw_data(buf[total_bytes_read^:]),
+            win.DWORD(len(buf[total_bytes_read^:])),
+            &loop_bytes_read,
             nil,
         )
-        if bytes_read == 0 {
+        if loop_bytes_read == 0 {
             break
         } else if !ok {
             err = Internal_Error.Pipe_Read_Failed
             return
         }
-        total_bytes_read += bytes_read
-        if total_bytes_read >= win.DWORD(len(buf)) {
-            resize(&buf, 2 * len(buf))
+        total_bytes_read^ += uint(loop_bytes_read)
+        if total_bytes_read^ >= len(buf) {
+            resize(buf, 2 * len(buf))
         }
     }
-    resize(&buf, total_bytes_read)
-    return string(buf[:]), nil
+    return total_bytes_read^ - init_len, nil
 }
 
 @(require_results)

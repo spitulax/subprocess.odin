@@ -45,6 +45,12 @@ _process_wait :: proc(
     stderr_pipe, stderr_pipe_ok := self.stderr_pipe.?
     stdin_pipe, stdin_pipe_ok := self.stdin_pipe.?
     stdout_buf, stderr_buf: [dynamic]byte
+    defer if stdout_pipe_ok {
+        delete(stdout_buf)
+    }
+    defer if stderr_pipe_ok {
+        delete(stderr_buf)
+    }
     stdout_bytes_read, stderr_bytes_read: uint
     INITIAL_BUF_SIZE :: 1 * mem.Kilobyte
     if stdout_pipe_ok {
@@ -91,12 +97,10 @@ _process_wait :: proc(
             if stdout_pipe_ok {
                 pipe_close_read(&stdout_pipe) or_return
                 result.stdout = strings.clone_from_bytes(stdout_buf[:stdout_bytes_read], alloc)
-                delete(stdout_buf)
             }
             if stderr_pipe_ok {
                 pipe_close_read(&stderr_pipe) or_return
                 result.stderr = strings.clone_from_bytes(stderr_buf[:stderr_bytes_read], alloc)
-                delete(stderr_buf)
             }
             if stdin_pipe_ok {
                 pipe_close_write(&stdin_pipe) or_return
