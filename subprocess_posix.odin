@@ -173,16 +173,26 @@ _run_prog_async_unchecked :: proc(
 
     print_cmd(out_opt, in_opt, .POSIX, prog, args, loc)
 
-    env := make([dynamic]cstring)
-    if inherit_env {
-        for i, x := 0, posix.environ[0]; x != nil; i, x = i + 1, posix.environ[i] {
-            append(&env, x)
+    env: [^]cstring
+    env_cap := -1
+    if inherit_env && len(extra_env) == 0 {
+        env = posix.environ
+    } else if !inherit_env && len(extra_env) == 0 {
+        env = raw_data([]cstring{nil})
+    } else {
+        env_arr := make([dynamic]cstring)
+        if inherit_env {
+            for i, x := 0, posix.environ[0]; x != nil; i, x = i + 1, posix.environ[i] {
+                append(&env_arr, x)
+            }
         }
+        for x in extra_env {
+            append(&env_arr, strings.clone_to_cstring(x, context.temp_allocator))
+        }
+        append(&env_arr, nil)
+        env = raw_data(env_arr)
+        env_cap = cap(env_arr)
     }
-    for x in extra_env {
-        append(&env, strings.clone_to_cstring(x, context.temp_allocator))
-    }
-    append(&env, nil)
 
     child_pid := posix.fork()
     if child_pid == FAIL {
@@ -236,7 +246,7 @@ _run_prog_async_unchecked :: proc(
             fd_close(dev_null) or_return
         }
 
-        if posix.execve(argv[0], raw_data(argv), raw_data(env)) == FAIL {
+        if posix.execve(argv[0], raw_data(argv), env) == FAIL {
             wrap(General_Error.Program_Not_Executed)
         }
         unreachable()
@@ -244,7 +254,9 @@ _run_prog_async_unchecked :: proc(
     process.execution_time = time.now()
     process.alive = true
 
-    delete(env)
+    if env_cap >= 0 {
+        runtime.mem_free_with_size(env, env_cap * size_of(cstring))
+    }
     delete(argv)
 
     if out_opt == .Silent || in_opt == .Nothing {

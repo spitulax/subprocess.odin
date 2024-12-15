@@ -153,36 +153,48 @@ _run_prog_async_unchecked :: proc(
     cmd := combine_args(prog, args, mode, context.temp_allocator)
     print_cmd(out_opt, in_opt, mode, prog, args, loc)
 
-    env := make([dynamic]win.WCHAR)
-    defer delete(env)
-    if inherit_env {
-        sysenvs := ([^]win.WCHAR)(win.GetEnvironmentStringsW())
-        if sysenvs == nil {
-            err = General_Error.Spawn_Failed
-            return
-        }
-        defer win.FreeEnvironmentStringsW(sysenvs)
-        for from, i := 0, 0; true; i += 1 {
-            if c := sysenvs[i]; c == 0 {
-                if i <= from {
-                    break
+    env: [^]win.WCHAR
+    env_cap := -1
+    defer if env_cap >= 0 {
+        runtime.mem_free_with_size(env, env_cap * size_of(win.WCHAR))
+    }
+    if inherit_env && len(extra_env) == 0 {
+        env = nil
+    } else if !inherit_env && len(extra_env) == 0 {
+        env = raw_data([]win.WCHAR{0, 0})
+    } else {
+        env_arr := make([dynamic]win.WCHAR)
+        if inherit_env {
+            sysenvs := ([^]win.WCHAR)(win.GetEnvironmentStringsW())
+            if sysenvs == nil {
+                err = General_Error.Spawn_Failed
+                return
+            }
+            defer win.FreeEnvironmentStringsW(sysenvs)
+            for from, i := 0, 0; true; i += 1 {
+                if c := sysenvs[i]; c == 0 {
+                    if i <= from {
+                        break
+                    }
+                    for char in sysenvs[from:i] {
+                        append(&env_arr, char)
+                    }
+                    append(&env_arr, 0)
+                    from = i + 1
                 }
-                for char in sysenvs[from:i] {
-                    append(&env, char)
-                }
-                append(&env, 0)
-                from = i + 1
             }
         }
-    }
-    for x in extra_env {
-        wstr := win.utf8_to_wstring(x)
-        for i := 0; wstr[i] != 0; i += 1 {
-            append(&env, wstr[i])
+        for x in extra_env {
+            wstr := win.utf8_to_wstring(x)
+            for i := 0; wstr[i] != 0; i += 1 {
+                append(&env_arr, wstr[i])
+            }
+            append(&env_arr, 0)
         }
-        append(&env, 0)
+        append(&env_arr, 0)
+        env = raw_data(env_arr)
+        env_cap = cap(env_arr)
     }
-    append(&env, 0)
 
     proc_info: win.PROCESS_INFORMATION
     ok := win.CreateProcessW(
@@ -192,7 +204,7 @@ _run_prog_async_unchecked :: proc(
         nil,
         true,
         win.CREATE_UNICODE_ENVIRONMENT,
-        raw_data(env),
+        env,
         nil,
         &start_info,
         &proc_info,

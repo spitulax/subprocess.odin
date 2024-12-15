@@ -21,6 +21,7 @@ ARGS += -vet-packages:subprocess
 ARGS += -disallow-do
 ARGS += -warnings-as-errors
 ARGS += -use-separate-modules
+ARGS += -o:speed
 ifdef TARGET
 	ARGS += -target:$(TARGET)
 endif
