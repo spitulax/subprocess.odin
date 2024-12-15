@@ -149,8 +149,9 @@ _run_prog_async_unchecked :: proc(
     )
     start_info.dwFlags |= win.STARTF_USESTDHANDLES
 
-    cmd := combine_args(prog, args, true, context.temp_allocator)
-    print_cmd(out_opt, in_opt, prog, args, loc)
+    mode: Escaping_Mode = .Win_Cmd if path.stem(prog) == "cmd" else .Win_API
+    cmd := combine_args(prog, args, mode, context.temp_allocator)
+    print_cmd(out_opt, in_opt, mode, prog, args, loc)
 
     env := make([dynamic]win.WCHAR)
     defer delete(env)

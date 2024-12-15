@@ -133,7 +133,7 @@ _run_prog_async_unchecked :: proc(
     }
     argv[len(argv) - 1] = nil
 
-    print_cmd(out_opt, in_opt, prog, args, loc)
+    print_cmd(out_opt, in_opt, .POSIX, prog, args, loc)
 
     env := make([dynamic]cstring)
     if inherit_env {

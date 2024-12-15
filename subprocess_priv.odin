@@ -177,9 +177,11 @@ append_concat_string_sep :: proc(w: io.Writer, strs: []string, sep: string) {
 }
 
 
+// NOTE: What this procedure prints should be runnable inside the system shell without modification
 print_cmd :: proc(
     out_opt: Output_Option,
     in_opt: Input_Option,
+    mode: Escaping_Mode,
     prog: string,
     args: []string,
     loc: Loc,
@@ -190,7 +192,7 @@ print_cmd :: proc(
             "(%v|%v) %s",
             out_opt,
             in_opt,
-            combine_args(prog, args, false, context.temp_allocator),
+            combine_args(prog, args, mode, context.temp_allocator),
         )
         if .Echo_Commands in g_flags {
             log_info(msg, loc = loc)
@@ -200,10 +202,19 @@ print_cmd :: proc(
     }
 }
 
+Escaping_Mode :: enum {
+    // Escaping for POSIX shell
+    POSIX,
+    // Escaping for `CreateProcessW`
+    Win_API,
+    // (No) Escaping for `cmd.exe /C ...`
+    Win_Cmd,
+}
+
 combine_args :: proc(
     prog: string,
     args: []string,
-    for_winapi: bool,
+    mode: Escaping_Mode,
     alloc := context.allocator,
     loc := #caller_location,
 ) -> string {
@@ -217,22 +228,39 @@ combine_args :: proc(
             strings.write_rune(&b, ' ')
         }
 
+        when ODIN_OS in POSIX_OS {
+            QUOTED :: "|&;<>()$`\\\"'*?[#~=%"
+        } else when ODIN_OS in WINDOWS_OS {
+            QUOTED :: "&<>[]|{}^=;!'+,`~%"
+        }
         // NOTE: `strings.write_quoted_string` will always quote the string
-        need_quoting := strings.contains_space(s)
+        need_quoting :=
+            mode != .Win_Cmd && (strings.contains_space(s) || strings.contains_any(s, QUOTED))
 
         if need_quoting {
             strings.write_rune(&b, '"')
         }
 
         for c, j in s {
-            switch c {
-            case '\\':
-                if !for_winapi {
-                    strings.write_rune(&b, '\\')
-                } else if s[j + 1] == '"' {
-                    strings.write_rune(&b, '\\')
+            escape := false
+
+            switch mode {
+            case .POSIX:
+                switch c {
+                case '"', '$', '\\', '`':
+                    escape = true
                 }
-            case '"':
+            case .Win_API:
+                switch c {
+                case '\\':
+                    escape = s[j + 1] == '"'
+                case '"':
+                    escape = true
+                }
+            case .Win_Cmd:
+            }
+
+            if escape {
                 strings.write_rune(&b, '\\')
             }
             strings.write_rune(&b, c)
@@ -242,6 +270,9 @@ combine_args :: proc(
             strings.write_rune(&b, '"')
         }
     }
+
+    log_debug(strings.to_string(b))
+
 
     return strings.to_string(b)
 }
