@@ -653,6 +653,7 @@ command_run_sync :: proc(
     in_opt: Input_Option = .Share,
     inherit_env: bool = true,
     extra_env: []string = {},
+    alloc := context.allocator,
     loc := #caller_location,
 ) -> (
     result: Process_Result,
@@ -665,7 +666,7 @@ command_run_sync :: proc(
         in_opt,
         inherit_env,
         extra_env,
-        self.alloc,
+        alloc,
         loc,
     )
 }
