@@ -13,7 +13,7 @@ when ODIN_OS in lib.POSIX_OS {
     CMD :: "-c" // shell flag to execute the next argument as a command
 } else when ODIN_OS in lib.WINDOWS_OS {
     NL :: "\r\n"
-    SH :: "cmd"
+    SH :: "cmd.exe"
     CMD :: "/C"
 }
 

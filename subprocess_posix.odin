@@ -42,12 +42,6 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
     stderr_pipe, stderr_pipe_ok := &self.stderr_pipe.?
     stdin_pipe, stdin_pipe_ok := &self.stdin_pipe.?
     stdout_buf, stderr_buf: [dynamic]byte
-    defer if stdout_pipe_ok {
-        delete(stdout_buf)
-    }
-    defer if stderr_pipe_ok {
-        delete(stderr_buf)
-    }
     stdout_bytes_read, stderr_bytes_read: uint
     INITIAL_BUF_SIZE :: 1 * mem.Kilobyte
     if stdout_pipe_ok {
@@ -57,6 +51,12 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
     if stderr_pipe_ok {
         pipe_close_write(stderr_pipe) or_return
         stderr_buf = make([dynamic]byte, INITIAL_BUF_SIZE, alloc)
+    }
+    defer if stdout_pipe_ok {
+        delete(stdout_buf)
+    }
+    defer if stderr_pipe_ok {
+        delete(stderr_buf)
     }
 
     for {
@@ -281,21 +281,19 @@ _exec_async :: proc(
 _program :: proc(name: string, alloc: Alloc, loc: Loc) -> (path: string, err: Error) {
     runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD(alloc == context.temp_allocator)
     res: Result
-    if res, err = exec(
+    res = exec(
         "/bin/sh",
         {"-c", fmt.tprintf("command -v '%s'", name)},
         {output = .Capture, inherit_env = true},
         alloc = context.temp_allocator,
-        loc = loc,
-    ); err != nil {
-        return
-    }
+    ) or_return
+
     if !result_success(res) {
         err = General_Error.Program_Not_Found
         return
     }
 
-    path = strings.clone(res.stdout[:len(res.stdout) - 1], alloc, loc)
+    path = strings.clone(trim_nl(res.stdout), alloc, loc)
     return
 }
 
@@ -355,6 +353,7 @@ pipe_close_write :: proc(self: ^Pipe) -> (err: Error) {
     return nil
 }
 
+@(require_results)
 pipe_ensure_closed :: proc(self: ^Pipe) -> (err: Error) {
     pipe_close_read(self) or_return
     pipe_close_write(self) or_return

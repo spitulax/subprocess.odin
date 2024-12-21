@@ -15,11 +15,12 @@ cmd_async :: proc(t: ^testing.T) {
         process = lib.unwrap(lib.run_shell_async("echo HELLO, WORLD!", {output = .Capture}))
     }
     results := lib.process_wait_many(processes[:], context.temp_allocator)
-    for result in results {
+    for result, i in results {
         if result.err != nil {
             log.error(result.err)
         } else {
             expect_success(t, result.result)
+            testing.expect_value(t, processes[i].alive, false)
             testing.expect_value(t, result.result.stdout, "HELLO, WORLD!" + NL)
             testing.expect_value(t, result.result.stderr, "")
         }

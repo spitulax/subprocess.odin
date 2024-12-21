@@ -24,7 +24,7 @@ when ODIN_OS in POSIX_OS {
     CMD :: "-c" // shell flag to execute the next argument as a command
 } else when ODIN_OS in WINDOWS_OS {
     NL :: "\r\n"
-    SH :: "cmd"
+    SH :: "cmd.exe"
     CMD :: "/C"
 }
 
@@ -174,6 +174,10 @@ append_concat_string_sep :: proc(w: io.Writer, strs: []string, sep: string) {
         }
         fmt.wprint(w, str)
     }
+}
+
+trim_nl :: proc(s: string) -> string {
+    return strings.trim_suffix(s, NL)
 }
 
 
