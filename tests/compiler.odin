@@ -16,7 +16,6 @@ compiler :: proc(t: ^testing.T) {
     if !cc_ok {return}
     defer lib.command_destroy(&cc)
     cc.opts.output = .Capture
-    cc.opts.inherit_env = true
     lib.command_append_many(&cc, "-o", RATS_DIR + EXEC_PATH, RATS_DIR + "/main.c")
 
     EXEC_PATH :: "/main.exe" when ODIN_OS in lib.WINDOWS_OS else "/main"
@@ -32,7 +31,7 @@ compiler :: proc(t: ^testing.T) {
 
     compiled_prog := lib.program(RATS_DIR + EXEC_PATH, context.temp_allocator)
     if !testing.expect(t, compiled_prog.found) {return}
-    result2, result2_ok := lib.unwrap(lib.program_run(compiled_prog, {}, {output = .Capture, inherit_env = true}))
+    result2, result2_ok := lib.unwrap(lib.program_run(compiled_prog, {}, {output = .Capture}))
     defer lib.result_destroy(&result2)
     if result2_ok {
         if !lib.result_success(result2) {

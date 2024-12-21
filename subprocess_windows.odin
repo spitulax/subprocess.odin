@@ -23,14 +23,7 @@ _is_success :: proc(exit: Process_Exit) -> bool {
 }
 
 
-_process_wait :: proc(
-    self: ^Process,
-    alloc: Alloc,
-    loc: Loc,
-) -> (
-    result: Result,
-    err: Error,
-) {
+_process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result, err: Error) {
     defer if err != nil {
         result_destroy(&result, alloc)
     }
@@ -185,13 +178,13 @@ _exec_async :: proc(
     defer if env_cap >= 0 {
         runtime.mem_free_with_size(env, env_cap * size_of(win.WCHAR))
     }
-    if opts.inherit_env && len(opts.extra_env) == 0 {
+    if !opts.zero_env && len(opts.extra_env) == 0 {
         env = nil
-    } else if !opts.inherit_env && len(opts.extra_env) == 0 {
+    } else if opts.zero_env && len(opts.extra_env) == 0 {
         env = raw_data([]win.WCHAR{0, 0})
     } else {
         env_arr := make([dynamic]win.WCHAR)
-        if opts.inherit_env {
+        if !opts.zero_env {
             sysenvs := ([^]win.WCHAR)(win.GetEnvironmentStringsW())
             if sysenvs == nil {
                 err = General_Error.Spawn_Failed
@@ -302,7 +295,7 @@ _program :: proc(name: string, alloc: Alloc, loc: Loc) -> (path: string, err: Er
     res = exec(
         "cmd",
         {"/C", fmt.tprint("where", name, "&& exit 0 || exit 1")},
-        {output = .Capture, inherit_env = true},
+        {output = .Capture},
         alloc = context.temp_allocator,
     ) or_return
 

@@ -288,13 +288,13 @@ Input_Option :: enum u8 {
 // Options for executing processes.
 Exec_Opts :: struct {
     // The `Output_Option`.
-    output:      Output_Option,
+    output:    Output_Option,
     // The `Input_Option`.
-    input:       Input_Option,
-    // Whether the process will inherit environment variables of the parent process.
-    inherit_env: bool,
-    // Extra environment variables with a format of "key=value". If `inherit_env` is false, it is basically the only environment variables of the process.
-    extra_env:   []string,
+    input:     Input_Option,
+    // Whether the process will not inherit environment variables of the parent process.
+    zero_env:  bool,
+    // Extra environment variables with a format of "key=value". If `zero_env` is true, it is basically the only environment variables of the process.
+    extra_env: []string,
 }
 
 

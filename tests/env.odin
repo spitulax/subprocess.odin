@@ -30,15 +30,13 @@ env :: proc(t: ^testing.T) {
     result: lib.Result
     ok: bool
 
-    result, ok = lib.unwrap(
-        lib.run_shell_sync(echo(USER), {output = .Capture, inherit_env = true}),
-    )
+    result, ok = lib.unwrap(lib.run_shell_sync(echo(USER), {output = .Capture}))
     if ok {
         defer lib.result_destroy(&result)
         testing.expect_value(t, trim_nl(result.stdout), os.get_env(USER, context.temp_allocator))
     }
 
-    result, ok = lib.unwrap(lib.run_shell_sync(echo(USER), {output = .Capture}))
+    result, ok = lib.unwrap(lib.run_shell_sync(echo(USER), {output = .Capture, zero_env = true}))
     if ok {
         defer lib.result_destroy(&result)
         when ODIN_OS in lib.POSIX_OS {
@@ -51,7 +49,7 @@ env :: proc(t: ^testing.T) {
     result, ok = lib.unwrap(
         lib.run_shell_sync(
             echo("MY_VARIABLE"),
-            {output = .Capture, extra_env = {"MY_VARIABLE=foobar"}},
+            {output = .Capture, extra_env = {"MY_VARIABLE=foobar"}, zero_env = false},
         ),
     )
     if ok {
@@ -62,7 +60,7 @@ env :: proc(t: ^testing.T) {
     result, ok = lib.unwrap(
         lib.run_shell_sync(
             echo("MY_VARIABLE"),
-            {output = .Capture, extra_env = {"MY_VARIABLE=foobar"}, inherit_env = true},
+            {output = .Capture, extra_env = {"MY_VARIABLE=foobar"}, zero_env = true},
         ),
     )
     if ok {

@@ -172,13 +172,13 @@ _exec_async :: proc(
 
     env: [^]cstring
     env_cap := -1
-    if opts.inherit_env && len(opts.extra_env) == 0 {
+    if !opts.zero_env && len(opts.extra_env) == 0 {
         env = posix.environ
-    } else if !opts.inherit_env && len(opts.extra_env) == 0 {
+    } else if opts.zero_env && len(opts.extra_env) == 0 {
         env = raw_data([]cstring{nil})
     } else {
         env_arr := make([dynamic]cstring)
-        if opts.inherit_env {
+        if !opts.zero_env {
             for i, x := 0, posix.environ[0]; x != nil; i, x = i + 1, posix.environ[i] {
                 append(&env_arr, x)
             }
@@ -284,7 +284,7 @@ _program :: proc(name: string, alloc: Alloc, loc: Loc) -> (path: string, err: Er
     res = exec(
         "/bin/sh",
         {"-c", fmt.tprintf("command -v '%s'", name)},
-        {output = .Capture, inherit_env = true},
+        {output = .Capture},
         alloc = context.temp_allocator,
     ) or_return
 
