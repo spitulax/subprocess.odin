@@ -328,8 +328,9 @@ Program :: struct {
 }
 
 // Deallocates a `Program`.
-program_destroy :: proc(self: Program, alloc := context.allocator, loc := #caller_location) {
+program_destroy :: proc(self: ^Program, alloc := context.allocator, loc := #caller_location) {
     delete(self.path, alloc, loc)
+    self^ = {}
 }
 
 @(require_results)
@@ -369,7 +370,7 @@ program_check :: proc(
     path, err = _program(name, alloc, loc)
     g_flags = flags_temp
     if err != nil {
-        program_destroy(prog, alloc)
+        delete(path, alloc)
         return Program{false, ""}, err
     }
     return Program{true, path}, nil
@@ -707,7 +708,8 @@ command_clear :: proc(self: ^Command) {
 command_destroy :: proc(self: ^Command, loc := #caller_location) {
     command_clear(self)
     delete(self.args, loc)
-    program_destroy(self.prog, self.alloc, loc)
+    program_destroy(&self.prog, self.alloc, loc)
+    self^ = {}
 }
 
 // Same as `command_run_sync`.

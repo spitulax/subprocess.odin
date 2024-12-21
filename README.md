@@ -27,13 +27,14 @@ package main
 import sp "subprocess.odin"
 
 main :: proc() {
-    prog := sp.program("cc") // Will search from PATH
-    // File path is also valid
-    // prog := sp.program("./bin/cc")
-    if !prog.found {return}
-    result, err := sp.run_prog_sync(prog, {"--version"})
-    defer sp.process_result_destroy(&result)
-    if err == nil {
+    cmd, cmd_err := sp.command_make("cc") // Will search from PATH
+    // File paths are also valid
+    // prog := sp.command_make("./bin/cc")
+    if cmd_err != nil {return}
+    defer sp.command_destroy(&cmd)
+    sp.command_append(&cmd, "--version")
+    result, result_err := sp.command_run(cmd)
+    if result_err == nil {
         sp.log_info(result)
     }
 }

@@ -1,5 +1,4 @@
 package demos
-// TODO: UPDATE EXAMPLES
 
 import sp ".."
 import "core:log"
@@ -10,32 +9,72 @@ main :: proc() {
 
     // Running a shell command
     {
-        result, err := sp.run_shell_sync("echo Hello, World!")
+        result, err := sp.run_shell("echo Hello, World!")
         defer sp.result_destroy(&result)
         if err == nil {
             sp.log_info(result)
         }
     }
 
-    // Running a program
+    // Running a program (via `Command`)
+    {
+        cmd, cmd_err := sp.command_make("cc") // Will search from PATH
+        // File paths are also valid
+        // prog := sp.command_make("./bin/cc")
+        if cmd_err != nil {return}
+        defer sp.command_destroy(&cmd)
+        sp.command_append(&cmd, "--version")
+        result, result_err := sp.command_run(cmd)
+        if result_err == nil {
+            sp.log_info(result)
+        }
+    }
+
+    // Running a program (via `Program`)
     {
         prog := sp.program("cc") // Will search from PATH
         // File paths are also valid
         // prog := sp.program("./bin/cc")
-        if !prog.found {return}
-        result, err := sp.run_prog_sync(prog, {"--version"})
-        defer sp.process_result_destroy(&result)
+        defer sp.program_destroy(&prog)
+        result, err := sp.program_run(prog, {"--version"})
+        defer sp.result_destroy(&result)
         if err == nil {
             sp.log_info(result)
         }
     }
 
+    // Using `Command`
+    {
+        cmd, cmd_err := sp.command_make("sh")
+        if cmd_err != nil {return}
+        defer sp.command_destroy(&cmd)
+
+        // Appending to the default arguments
+        sp.command_append(&cmd, "-c", "echo Hello, World!")
+        // Setting default options
+        cmd.opts.output = .Silent
+
+        // Running with the default arguments and options
+        if _, err := sp.command_run(cmd, alloc = context.temp_allocator); err != nil {return}
+
+        // Resetting the default arguments
+        sp.command_clear(&cmd)
+
+        // Running with custom arguments and/or options
+        if _, err := sp.command_run(
+            cmd,
+            sp.Exec_Opts{output = .Share},
+            {"-c", "echo Hello!"},
+            alloc = context.temp_allocator,
+        ); err != nil {return}
+    }
+
     // Checking exit status
     {
-        result, err := sp.run_shell_sync("exit 1")
-        defer sp.process_result_destroy(&result)
+        result, err := sp.run_shell("exit 1")
+        defer sp.result_destroy(&result)
         if err == nil {
-            if !sp.process_result_success(result) {
+            if !sp.result_success(result) {
                 sp.log_info("Program exited abnormally:", result.exit)
             }
         }
@@ -44,24 +83,24 @@ main :: proc() {
     // Capturing output
     {
         // Separating stdout and stderr
-        result, err := sp.run_shell_sync("echo Hello, World!>&2", out_opt = .Capture)
+        result, err := sp.run_shell("echo Hello, World!>&2", {output = .Capture})
         if err == nil {
             sp.log_info(result.stdout)
             sp.log_info(result.stderr)
         }
-        sp.process_result_destroy(&result)
+        sp.result_destroy(&result)
 
         // Combining stdout and stderr
-        result, err = sp.run_shell_sync("echo Hello, World!>&2", out_opt = .Capture_Combine)
+        result, err = sp.run_shell("echo Hello, World!>&2", {output = .Capture_Combine})
         if err == nil {
             sp.log_info(result.stdout)
         }
-        sp.process_result_destroy(&result)
+        sp.result_destroy(&result)
     }
 
     // Silence output
     {
-        result, err := sp.run_shell_sync("echo Hello, World", out_opt = .Silent)
+        result, err := sp.run_shell("echo Hello, World", {output = .Silent})
         if err == nil {
             sp.log_info(result)
         }
@@ -71,10 +110,10 @@ main :: proc() {
     {
         processes: [10]sp.Process
         for &process in processes {
-            process, _ = sp.run_shell_async("echo HELLO, WORLD!", .Capture)
+            process, _ = sp.run_shell_async("echo HELLO, WORLD!", {output = .Capture})
         }
         results := sp.process_wait_many(processes[:])
-        defer sp.process_result_destroy_many(results.result[:len(results)])
+        defer sp.result_destroy_many(results.result[:len(results)])
         for result in results {
             if result.err == nil {
                 sp.log_info(result.result.stdout)
@@ -82,27 +121,10 @@ main :: proc() {
         }
     }
 
-    // Command builder
-    {
-        cmd, cmd_err := sp.command_make("cc")
-        if cmd_err != nil {return}
-        defer sp.command_destroy(&cmd)
-        if !cmd.prog.found {return}
-        sp.command_append(&cmd, "--version")
-        result, result_err := sp.command_run_sync(cmd)
-        if result_err == nil {
-            sp.log_info(result)
-        }
-    }
-
     // Passing environment variables
     {
-        result, err := sp.run_shell_sync(
-            "echo $MY_VARIABLE",
-            // "echo %MY_VARIABLE", (Windows)
-            extra_env = {"MY_VARIABLE=foobar"},
-        )
-        defer sp.process_result_destroy(&result)
+        result, err := sp.run_shell_sync("echo $MY_VARIABLE", {extra_env = {"MY_VARIABLE=foobar"}})
+        defer sp.result_destroy(&result)
         if err == nil {
             sp.log_info(result)
         }
@@ -110,11 +132,11 @@ main :: proc() {
 
     // Sending inputs
     {
-        process, process_err := sp.run_shell_async("read test && echo $test", in_opt = .Pipe)
+        process, process_err := sp.run_shell_async("read test && echo $test", {input = .Pipe})
         if process_err != nil {return}
         sp.pipe_write(process.stdin_pipe.?, "Hello, World!")
         result, result_err := sp.process_wait(&process)
-        defer sp.process_result_destroy(&result)
+        defer sp.result_destroy(&result)
         if result_err == nil {
             sp.log_info(result)
         }
