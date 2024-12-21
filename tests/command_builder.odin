@@ -15,12 +15,12 @@ command_builder :: proc(t: ^testing.T) {
     lib.command_append(&cmd, "echo Hello, World!")
 
     {
-        results: [3]lib.Process_Result
+        results: [3]lib.Result
         oks: [3]bool
-        results[0], oks[0] = lib.unwrap(lib.command_run_sync(cmd, .Share))
-        results[1], oks[1] = lib.unwrap(lib.command_run_sync(cmd, .Capture))
-        results[2], oks[2] = lib.unwrap(lib.command_run_sync(cmd, .Silent))
-        defer lib.process_result_destroy_many(results[:])
+        results[0], oks[0] = lib.unwrap(lib.command_run(cmd))
+        results[1], oks[1] = lib.unwrap(lib.command_run(cmd, lib.Exec_Opts{output = .Capture}))
+        results[2], oks[2] = lib.unwrap(lib.command_run(cmd, lib.Exec_Opts{output = .Silent}))
+        defer lib.result_destroy_many(results[:])
         for &x, i in results {
             if !oks[i] {
                 continue
@@ -35,12 +35,12 @@ command_builder :: proc(t: ^testing.T) {
         PROCESSES :: 5
         processes: [PROCESSES]lib.Process
         for i in 0 ..< PROCESSES {
-            processes[i] = lib.unwrap(lib.command_run_async(cmd, .Capture))
+            processes[i] = lib.unwrap(lib.command_run_async(cmd, lib.Exec_Opts{output = .Capture}))
         }
         res := lib.process_wait_many(processes[:])
         defer {
             proc_res, _ := soa_unzip(res)
-            lib.process_result_destroy_many(proc_res)
+            lib.result_destroy_many(proc_res)
         }
         defer delete(res)
         testing.expect_value(t, len(res), PROCESSES)

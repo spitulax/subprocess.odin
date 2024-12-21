@@ -12,7 +12,7 @@ cmd_async :: proc(t: ^testing.T) {
     before := time.now()
     processes: [10]lib.Process
     for &process in processes {
-        process = lib.unwrap(lib.run_shell_async("echo HELLO, WORLD!", .Capture))
+        process = lib.unwrap(lib.run_shell_async("echo HELLO, WORLD!", {output = .Capture}))
     }
     results := lib.process_wait_many(processes[:], context.temp_allocator)
     for result in results {

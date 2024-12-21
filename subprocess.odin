@@ -58,6 +58,7 @@ Example:
 	// or ...
 	result = unwrap(run_prog_sync("command")) // prints the error using `log_error`
 */
+// TODO: custom err message
 unwrap :: proc {
     unwrap_0,
     unwrap_1,
@@ -178,7 +179,7 @@ process_wait :: proc(
     alloc := context.allocator,
     loc := #caller_location,
 ) -> (
-    result: Process_Result,
+    result: Result,
     err: Error,
 ) {
     result, err = _process_wait(self, alloc, loc)
@@ -202,7 +203,7 @@ process_wait_many :: proc(
     loc := #caller_location,
 ) -> (
     res: #soa[]struct {
-        result: Process_Result,
+        result: Result,
         err:    Error,
     },
 ) {
@@ -216,8 +217,11 @@ process_wait_many :: proc(
 }
 
 
+// FIXME: Expose stdout and stderr as []byte
+// TODO: Allow user to immediately read output buf before the program exits
+
 // Stores the result of a `Process` that has exited.
-Process_Result :: struct {
+Result :: struct {
     // The exit status.
     exit:     Process_Exit,
     // The running duration.
@@ -232,29 +236,25 @@ Process_Result :: struct {
 }
 
 // Checks if a `Process_Result` indicates a successful exit.
-process_result_success :: proc(self: Process_Result) -> bool {
+result_success :: proc(self: Result) -> bool {
     return is_success(self.exit)
 }
 
 // Deallocates a `Process_Result`.
-process_result_destroy :: proc(
-    self: ^Process_Result,
-    alloc := context.allocator,
-    loc := #caller_location,
-) {
+result_destroy :: proc(self: ^Result, alloc := context.allocator, loc := #caller_location) {
     delete(self.stdout, alloc, loc)
     delete(self.stderr, alloc, loc)
     self^ = {}
 }
 
 // Deallocates multiple `Process_Result`.
-process_result_destroy_many :: proc(
-    selves: []Process_Result,
+result_destroy_many :: proc(
+    selves: []Result,
     alloc := context.allocator,
     loc := #caller_location,
 ) {
     for &result in selves {
-        process_result_destroy(&result, alloc, loc)
+        result_destroy(&result, alloc, loc)
     }
 }
 
@@ -285,6 +285,19 @@ Input_Option :: enum u8 {
     Pipe,
 }
 
+// Options for executing processes.
+Exec_Opts :: struct {
+    // The `Output_Option`.
+    output:      Output_Option,
+    // The `Input_Option`.
+    input:       Input_Option,
+    // Whether the process will inherit environment variables of the parent process.
+    inherit_env: bool,
+    // Extra environment variables with a format of "key=value". If `inherit_env` is false, it is basically the only environment variables of the process.
+    extra_env:   []string,
+}
+
+
 /*
 Runs a program asynchronously.
 The process will keep running in parallel until explicitly waited using `process_wait*`.
@@ -292,166 +305,42 @@ The process will keep running in parallel until explicitly waited using `process
 Inputs:
 - prog: The program to run as a `Program` or a string. `unchecked` version accepts a string, `checked` version accepts a `Program`.
 - args: Arguments to the program.
-- out_opt: The `Output_Option`.
-- in_opt: The `Input_Option`.
-- inherit_env: Whether the process will inherit environment variables of the parent process.
-- extra_env: Extra environment variables with a format of "key=value". If `inherit_env` is false, it is basically the only environment variables of the process.
 */
-run_prog_async :: proc {
-    run_prog_async_unchecked,
-    run_prog_async_checked,
-}
+//run_prog_async :: proc {
+//    run_prog_async_unchecked,
+//    run_prog_async_checked,
+//}
 
 // Runs a program synchronously.
 // The procedure will wait for the process.
 // See `run_prog_async` for informations about the parameters.
-run_prog_sync :: proc {
-    run_prog_sync_unchecked,
-    run_prog_sync_checked,
-}
-
-// See `run_prog_async`.
-run_prog_async_unchecked :: proc(
-    prog: string,
-    args: []string = {},
-    out_opt: Output_Option = .Share,
-    in_opt: Input_Option = .Share,
-    inherit_env: bool = true,
-    extra_env: []string = {},
-    loc := #caller_location,
-) -> (
-    process: Process,
-    err: Error,
-) {
-    return _run_prog_async_unchecked(prog, args, out_opt, in_opt, inherit_env, extra_env, loc)
-}
-
-// See `run_prog_async`.
-run_prog_async_checked :: proc(
-    prog: Program,
-    args: []string = {},
-    out_opt: Output_Option = .Share,
-    in_opt: Input_Option = .Share,
-    inherit_env: bool = true,
-    extra_env: []string = {},
-    loc := #caller_location,
-) -> (
-    process: Process,
-    err: Error,
-) {
-    if !prog.found {
-        err = General_Error.Program_Not_Found
-        return
-    }
-    return _run_prog_async_unchecked(prog.name, args, out_opt, in_opt, inherit_env, extra_env, loc)
-}
-
-// See `run_prog_sync`.
-run_prog_sync_unchecked :: proc(
-    prog: string,
-    args: []string = {},
-    out_opt: Output_Option = .Share,
-    in_opt: Input_Option = .Share,
-    inherit_env: bool = true,
-    extra_env: []string = {},
-    alloc := context.allocator,
-    loc := #caller_location,
-) -> (
-    result: Process_Result,
-    err: Error,
-) {
-    process := run_prog_async_unchecked(
-        prog,
-        args,
-        out_opt,
-        in_opt,
-        inherit_env,
-        extra_env,
-        loc,
-    ) or_return
-    return process_wait(&process, alloc, loc)
-}
-
-// See `run_prog_sync`.
-run_prog_sync_checked :: proc(
-    prog: Program,
-    args: []string = {},
-    out_opt: Output_Option = .Share,
-    in_opt: Input_Option = .Share,
-    inherit_env: bool = true,
-    extra_env: []string = {},
-    alloc := context.allocator,
-    loc := #caller_location,
-) -> (
-    result: Process_Result,
-    err: Error,
-) {
-    if !prog.found {
-        err = General_Error.Program_Not_Found
-        return
-    }
-    process := run_prog_async_unchecked(
-        prog.name,
-        args,
-        out_opt,
-        in_opt,
-        inherit_env,
-        extra_env,
-        loc,
-    ) or_return
-    return process_wait(&process, alloc, loc)
-}
-
-/*
-Runs a shell command asynchronously.
-The process will keep running in parallel until explicitly waited using `process_wait*`.
-In POSIX, it will use /bin/sh.
-In Windows, it will use cmd.exe.
-See `run_prog_async` for informations about the parameters.
-*/
-run_shell_async :: proc(
-    cmd: string,
-    out_opt: Output_Option = .Share,
-    in_opt: Input_Option = .Share,
-    inherit_env: bool = true,
-    extra_env: []string = {},
-    loc := #caller_location,
-) -> (
-    process: Process,
-    err: Error,
-) {
-    return run_prog_async(SH, {CMD, cmd}, out_opt, in_opt, inherit_env, extra_env, loc)
-}
-
-/*
-Runs a shell command synchronously.
-The procedure will wait for the process.
-In POSIX, it will use /bin/sh.
-In Windows, it will use cmd.exe.
-See `run_prog_async` for informations about the parameters.
-*/
-run_shell_sync :: proc(
-    cmd: string,
-    out_opt: Output_Option = .Share,
-    in_opt: Input_Option = .Share,
-    inherit_env: bool = true,
-    extra_env: []string = {},
-    alloc := context.allocator,
-    loc := #caller_location,
-) -> (
-    result: Process_Result,
-    err: Error,
-) {
-    return run_prog_sync(SH, {CMD, cmd}, out_opt, in_opt, inherit_env, extra_env, alloc, loc)
-}
-
+//run_prog_sync :: proc {
+//    run_prog_sync_unchecked,
+//    run_prog_sync_checked,
+//}
 
 // Stores representation of an executable program.
 Program :: struct {
     // Is the program found.
     found: bool,
-    // The name of the program (could be an executable name or a path, see `program`).
-    name:  string,
+    // The path of the program.
+    path:  string,
+}
+
+// Deallocates a `Program`.
+program_destroy :: proc(self: Program, alloc := context.allocator, loc := #caller_location) {
+    delete(self.path, alloc, loc)
+}
+
+@(require_results)
+program_clone :: proc(
+    self: Program,
+    alloc := context.allocator,
+    loc := #caller_location,
+) -> Program {
+    new := self
+    new.path = strings.clone(self.path, alloc, loc)
+    return new
 }
 
 /*
@@ -459,33 +348,165 @@ Returns a program from `name`.
 `name` could be an executable name, which in this case it will search from the PATH variable.
 `name` could also be a path to an executable.
 */
-@(require_results)
-program :: proc(name: string, loc := #caller_location) -> Program {
-    prog, _ := program_check(name, loc)
+program :: proc(name: string, alloc := context.allocator, loc := #caller_location) -> Program {
+    prog, _ := program_check(name, alloc, loc)
     return prog
 }
 
 // The same as `program`, but returns up the error.
 @(require_results)
-program_check :: proc(name: string, loc := #caller_location) -> (prog: Program, err: Error) {
+program_check :: proc(
+    name: string,
+    alloc := context.allocator,
+    loc := #caller_location,
+) -> (
+    prog: Program,
+    err: Error,
+) {
     flags_temp := g_flags
     default_flags_disable({.Echo_Commands, .Echo_Commands_Debug})
-    err = _program(name, loc)
+    path: string
+    path, err = _program(name, alloc, loc)
     g_flags = flags_temp
-    return Program{err == nil, name}, err
+    if err != nil {
+        program_destroy(prog, alloc)
+        return Program{false, ""}, err
+    }
+    return Program{true, path}, nil
+}
+
+// Same as `program_run_sync`.
+program_run :: program_run_sync
+
+/*
+Runs a `Program` asynchronously.
+The process will keep running in parallel until explicitly waited using `process_wait*`.
+*/
+program_run_async :: proc(
+    prog: Program,
+    args: []string = {},
+    opts: Exec_Opts = {},
+    loc := #caller_location,
+) -> (
+    process: Process,
+    err: Error,
+) {
+    if !prog.found {
+        err = General_Error.Program_Not_Found
+        return
+    }
+    return _exec_async(prog.path, args, opts, loc)
+}
+
+/*
+Runs a `Program` synchronously.
+The procedure will wait for the process.
+*/
+program_run_sync :: proc(
+    prog: Program,
+    args: []string = {},
+    opts: Exec_Opts = {},
+    alloc := context.allocator,
+    loc := #caller_location,
+) -> (
+    result: Result,
+    err: Error,
+) {
+    if !prog.found {
+        err = General_Error.Program_Not_Found
+        return
+    }
+    process := exec_async(prog.path, args, opts, loc) or_return
+    return process_wait(&process, alloc, loc)
 }
 
 
-// Stores a program with its arguments.
+// Same as `exec_sync`.
+exec :: exec_sync
+
+// Low level implementation of `program_run_async` that accepts a path to the executable.
+exec_async :: proc(
+    path: string,
+    args: []string = {},
+    opts: Exec_Opts = {},
+    loc := #caller_location,
+) -> (
+    process: Process,
+    err: Error,
+) {
+    return _exec_async(path, args, opts, loc)
+}
+
+// Low level implementation of `program_run_sync` that accepts a path to the executable.
+exec_sync :: proc(
+    path: string,
+    args: []string = {},
+    opts: Exec_Opts = {},
+    alloc := context.allocator,
+    loc := #caller_location,
+) -> (
+    result: Result,
+    err: Error,
+) {
+    process := exec_async(path, args, opts, loc) or_return
+    return process_wait(&process, alloc, loc)
+}
+
+
+// Same as `run_shell_sync`.
+run_shell :: run_shell_sync
+
+/*
+Runs a shell command asynchronously.
+The process will keep running in parallel until explicitly waited using `process_wait*`.
+In POSIX, it will use /bin/sh.
+In Windows, it will use cmd.exe.
+*/
+run_shell_async :: proc(
+    cmd: string,
+    opts: Exec_Opts = {},
+    loc := #caller_location,
+) -> (
+    process: Process,
+    err: Error,
+) {
+    return exec_async(SH, {CMD, cmd}, opts, loc)
+}
+
+/*
+Runs a shell command synchronously.
+The procedure will wait for the process.
+In POSIX, it will use /bin/sh.
+In Windows, it will use cmd.exe.
+*/
+run_shell_sync :: proc(
+    cmd: string,
+    opts: Exec_Opts = {},
+    alloc := context.allocator,
+    loc := #caller_location,
+) -> (
+    result: Result,
+    err: Error,
+) {
+    return exec(SH, {CMD, cmd}, opts, alloc, loc)
+}
+
+
+// Stores a program with its arguments and other data.
 Command :: struct {
+    // The program.
     prog:  Program,
+    // The program's default arguments.
     args:  [dynamic]string,
+    // The default `Exec_Opts` when calling `command_run*`.
+    opts:  Exec_Opts,
+    // Allocates `prog` and `args`.
     alloc: Alloc,
 }
 
 /*
 Make a `Command`.
-`prog` version accepts a `Program`, otherwise it accepts the program name.
+`prog` version accepts a `Program` and clones it, otherwise it accepts the program name.
 */
 command_make :: proc {
     command_make_none,
@@ -496,22 +517,37 @@ command_make :: proc {
     command_make_prog_len_cap,
 }
 
+// TODO: command_init*
+
 @(private)
-_command_make :: proc(prog: Program, len, cap: int, alloc: Alloc, loc: Loc) -> Command {
-    return Command{prog = prog, args = make([dynamic]string, len, cap, alloc, loc), alloc = alloc}
+_command_make :: proc(
+    prog: Program,
+    opts: Exec_Opts,
+    len, cap: int,
+    alloc: Alloc,
+    loc: Loc,
+) -> Command {
+    return Command {
+        prog = prog,
+        args = make([dynamic]string, len, cap, alloc, loc),
+        opts = opts,
+        alloc = alloc,
+    }
 }
 
 // See `command_make`.
 @(require_results)
 command_make_none :: proc(
     prog_name: string,
+    opts: Exec_Opts = {},
     alloc := context.allocator,
     loc := #caller_location,
 ) -> (
     res: Command,
     err: Error,
 ) {
-    return _command_make(program_check(prog_name, loc) or_return, 0, 0, alloc, loc), nil
+    return _command_make(program_check(prog_name, alloc, loc) or_return, opts, 0, 0, alloc, loc),
+        nil
 }
 
 // See `command_make`.
@@ -519,13 +555,22 @@ command_make_none :: proc(
 command_make_len :: proc(
     prog_name: string,
     len: int,
+    opts: Exec_Opts = {},
     alloc := context.allocator,
     loc := #caller_location,
 ) -> (
     res: Command,
     err: Error,
 ) {
-    return _command_make(program_check(prog_name, loc) or_return, len, len, alloc, loc), nil
+    return _command_make(
+            program_check(prog_name, alloc, loc) or_return,
+            opts,
+            len,
+            len,
+            alloc,
+            loc,
+        ),
+        nil
 }
 
 // See `command_make`.
@@ -533,23 +578,36 @@ command_make_len :: proc(
 command_make_len_cap :: proc(
     prog_name: string,
     len, cap: int,
+    opts: Exec_Opts = {},
     alloc := context.allocator,
     loc := #caller_location,
 ) -> (
     res: Command,
     err: Error,
 ) {
-    return _command_make(program_check(prog_name, loc) or_return, len, cap, alloc, loc), nil
+    return _command_make(
+            program_check(prog_name, alloc, loc) or_return,
+            opts,
+            len,
+            cap,
+            alloc,
+            loc,
+        ),
+        nil
 }
 
 // See `command_make`.
 @(require_results)
 command_make_prog_none :: proc(
     prog: Program,
+    opts: Exec_Opts = {},
     alloc := context.allocator,
     loc := #caller_location,
-) -> Command {
-    return _command_make(prog, 0, 0, alloc, loc)
+) -> (
+    res: Command,
+    err: Error,
+) {
+    return _command_make(program_clone(prog, alloc, loc), opts, 0, 0, alloc, loc), nil
 }
 
 // See `command_make`.
@@ -557,10 +615,14 @@ command_make_prog_none :: proc(
 command_make_prog_len :: proc(
     prog: Program,
     len: int,
+    opts: Exec_Opts = {},
     alloc := context.allocator,
     loc := #caller_location,
-) -> Command {
-    return _command_make(prog, len, len, alloc, loc)
+) -> (
+    res: Command,
+    err: Error,
+) {
+    return _command_make(program_clone(prog, alloc, loc), opts, len, len, alloc, loc), nil
 }
 
 // See `command_make`.
@@ -568,10 +630,14 @@ command_make_prog_len :: proc(
 command_make_prog_len_cap :: proc(
     prog: Program,
     len, cap: int,
+    opts: Exec_Opts = {},
     alloc := context.allocator,
     loc := #caller_location,
-) -> Command {
-    return _command_make(prog, len, cap, alloc, loc)
+) -> (
+    res: Command,
+    err: Error,
+) {
+    return _command_make(program_clone(prog, alloc, loc), opts, len, cap, alloc, loc), nil
 }
 
 // Appends to the arguments.
@@ -637,56 +703,51 @@ command_clear :: proc(self: ^Command) {
     clear(&self.args)
 }
 
-// Destroy a `Command`.
+// Deallocates a `Command`.
 command_destroy :: proc(self: ^Command, loc := #caller_location) {
     command_clear(self)
     delete(self.args, loc)
+    program_destroy(self.prog, self.alloc, loc)
 }
 
+// Same as `command_run_sync`.
+command_run :: command_run_sync
+
 /*
-Run a `Command` synchronously. See `run_prog_sync`.
-See `run_prog_async` for informations about the parameters.
+Runs a `Command` synchronously.
+See `program_run_async`.
 */
 command_run_sync :: proc(
     self: Command,
-    out_opt: Output_Option = .Share,
-    in_opt: Input_Option = .Share,
-    inherit_env: bool = true,
-    extra_env: []string = {},
+    override_opts: Maybe(Exec_Opts) = nil,
+    override_args: []string = nil,
     alloc := context.allocator,
     loc := #caller_location,
 ) -> (
-    result: Process_Result,
+    result: Result,
     err: Error,
 ) {
-    return run_prog_sync(
-        self.prog,
-        self.args[:],
-        out_opt,
-        in_opt,
-        inherit_env,
-        extra_env,
-        alloc,
-        loc,
-    )
+    opts := self.opts if override_opts == nil else override_opts.?
+    args := self.args[:] if override_args == nil else override_args
+    return program_run_sync(self.prog, args, opts, alloc, loc)
 }
 
 /*
-Run a `Command` asynchronously. See `run_prog_async`.
-See `run_prog_async` for informations about the parameters.
+Runs a `Command` asynchronously.
+See `program_run_async`.
 */
 command_run_async :: proc(
     self: Command,
-    out_opt: Output_Option = .Share,
-    in_opt: Input_Option = .Share,
-    inherit_env: bool = true,
-    extra_env: []string = {},
+    override_opts: Maybe(Exec_Opts) = nil,
+    override_args: []string = nil,
     loc := #caller_location,
 ) -> (
     process: Process,
     err: Error,
 ) {
-    return run_prog_async(self.prog, self.args[:], out_opt, in_opt, inherit_env, extra_env, loc)
+    opts := self.opts if override_opts == nil else override_opts.?
+    args := self.args[:] if override_args == nil else override_args
+    return program_run_async(self.prog, args, opts, loc)
 }
 
 

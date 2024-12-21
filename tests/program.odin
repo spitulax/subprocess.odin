@@ -7,8 +7,8 @@ import "core:testing"
 program :: proc(t: ^testing.T) {
     lib.default_flags_enable({.Use_Context_Logger, .Echo_Commands})
 
-    _, err := lib.run_prog_sync(
-        lib.program("notarealcommand"),
+    _, err := lib.program_run(
+        lib.program("notarealcommand", context.temp_allocator),
         {"--help"},
         alloc = context.temp_allocator,
     )

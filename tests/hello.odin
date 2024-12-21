@@ -8,29 +8,29 @@ hello :: proc(t: ^testing.T) {
     lib.default_flags_enable({.Use_Context_Logger, .Echo_Commands})
 
     ok: bool
-    result: lib.Process_Result
-    result, ok = lib.unwrap(lib.run_shell_sync("echo Hello, World!", .Share))
+    result: lib.Result
+    result, ok = lib.unwrap(lib.run_shell_sync("echo Hello, World!"))
     if ok {
         expect_success(t, result)
         testing.expect_value(t, result.stdout, "")
         testing.expect_value(t, result.stderr, "")
     }
-    lib.process_result_destroy(&result)
+    lib.result_destroy(&result)
 
-    result, ok = lib.unwrap(lib.run_shell_sync("echo Hello, World!", .Capture))
+    result, ok = lib.unwrap(lib.run_shell_sync("echo Hello, World!", {output = .Capture}))
     if ok {
         expect_success(t, result)
         testing.expect_value(t, result.stdout, "Hello, World!" + NL)
         testing.expect_value(t, result.stderr, "")
     }
-    lib.process_result_destroy(&result)
+    lib.result_destroy(&result)
 
-    result, ok = lib.unwrap(lib.run_shell_sync("echo Hello, World!", .Silent))
+    result, ok = lib.unwrap(lib.run_shell_sync("echo Hello, World!", {output = .Silent}))
     if ok {
         expect_success(t, result)
         testing.expect_value(t, result.stdout, "")
         testing.expect_value(t, result.stderr, "")
     }
-    lib.process_result_destroy(&result)
+    lib.result_destroy(&result)
 }
 

@@ -1,16 +1,17 @@
 package demos
+// TODO: UPDATE EXAMPLES
 
 import sp ".."
 import "core:log"
 
 main :: proc() {
-    // Set the flag to print commands that's executed
+    // Set the flag to print commands that are executed
     sp.default_flags_enable({.Echo_Commands_Debug})
 
     // Running a shell command
     {
         result, err := sp.run_shell_sync("echo Hello, World!")
-        defer sp.process_result_destroy(&result)
+        defer sp.result_destroy(&result)
         if err == nil {
             sp.log_info(result)
         }
@@ -19,7 +20,7 @@ main :: proc() {
     // Running a program
     {
         prog := sp.program("cc") // Will search from PATH
-        // File path is also valid
+        // File paths are also valid
         // prog := sp.program("./bin/cc")
         if !prog.found {return}
         result, err := sp.run_prog_sync(prog, {"--version"})

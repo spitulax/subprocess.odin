@@ -27,18 +27,20 @@ when ODIN_OS in lib.POSIX_OS {
 env :: proc(t: ^testing.T) {
     lib.default_flags_enable({.Use_Context_Logger, .Echo_Commands})
 
-    result: lib.Process_Result
+    result: lib.Result
     ok: bool
 
-    result, ok = lib.unwrap(lib.run_shell_sync(echo(USER), .Capture))
+    result, ok = lib.unwrap(
+        lib.run_shell_sync(echo(USER), {output = .Capture, inherit_env = true}),
+    )
     if ok {
-        defer lib.process_result_destroy(&result)
+        defer lib.result_destroy(&result)
         testing.expect_value(t, trim_nl(result.stdout), os.get_env(USER, context.temp_allocator))
     }
 
-    result, ok = lib.unwrap(lib.run_shell_sync(echo(USER), .Capture, inherit_env = false))
+    result, ok = lib.unwrap(lib.run_shell_sync(echo(USER), {output = .Capture}))
     if ok {
-        defer lib.process_result_destroy(&result)
+        defer lib.result_destroy(&result)
         when ODIN_OS in lib.POSIX_OS {
             testing.expect_value(t, trim_nl(result.stdout), "")
         } else when ODIN_OS in lib.WINDOWS_OS {
@@ -49,26 +51,22 @@ env :: proc(t: ^testing.T) {
     result, ok = lib.unwrap(
         lib.run_shell_sync(
             echo("MY_VARIABLE"),
-            .Capture,
-            extra_env = {"MY_VARIABLE=foobar"},
-            inherit_env = false,
+            {output = .Capture, extra_env = {"MY_VARIABLE=foobar"}},
         ),
     )
     if ok {
-        defer lib.process_result_destroy(&result)
+        defer lib.result_destroy(&result)
         testing.expect_value(t, trim_nl(result.stdout), "foobar")
     }
 
     result, ok = lib.unwrap(
         lib.run_shell_sync(
             echo("MY_VARIABLE"),
-            .Capture,
-            extra_env = {"MY_VARIABLE=foobar"},
-            inherit_env = true,
+            {output = .Capture, extra_env = {"MY_VARIABLE=foobar"}, inherit_env = true},
         ),
     )
     if ok {
-        defer lib.process_result_destroy(&result)
+        defer lib.result_destroy(&result)
         testing.expect_value(t, trim_nl(result.stdout), "foobar")
     }
 }

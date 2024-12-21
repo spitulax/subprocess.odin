@@ -52,20 +52,10 @@ _process_wait :: proc(
     for {
         bytes_read: uint
         if stdout_pipe_ok {
-            bytes_read += pipe_read(
-                &stdout_pipe,
-                &stdout_buf,
-                &stdout_bytes_read,
-                loc,
-                ) or_return
+            bytes_read += pipe_read(&stdout_pipe, &stdout_buf, &stdout_bytes_read, loc) or_return
         }
         if stderr_pipe_ok {
-            bytes_read += pipe_read(
-                &stderr_pipe,
-                &stderr_buf,
-                &stderr_bytes_read,
-                loc,
-                ) or_return
+            bytes_read += pipe_read(&stderr_pipe, &stderr_buf, &stderr_bytes_read, loc) or_return
         }
         if bytes_read == 0 {
             break
