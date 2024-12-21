@@ -61,6 +61,7 @@ Example:
 unwrap :: proc {
     unwrap_0,
     unwrap_1,
+    result_errs_unwrap,
 }
 
 @(private)
@@ -205,9 +206,11 @@ process_wait :: proc(
 /*
 Wait for multiple `Process` to exit.
 Stores the result and error for each `Process` in a SoA struct.
+The result was allocated with `alloc`.
 
 Example:
 	results := process_wait_many(processes)
+    defer delete(results)
 	for result in results {
 	    result := result.result
 	    err := result.err
@@ -218,12 +221,9 @@ process_wait_many :: proc(
     alloc := context.allocator,
     loc := #caller_location,
 ) -> (
-    res: #soa[]struct {
-        result: Result,
-        err:    Error,
-    },
+    res: Result_Errs,
 ) {
-    res = make_soa_slice(type_of(res), len(selves), alloc, loc)
+    res = make_soa_slice(Result_Errs, len(selves), alloc, loc)
     for &process, i in selves {
         process_result, process_err := process_wait(&process, alloc, loc)
         res[i].result = process_result
@@ -263,8 +263,12 @@ result_destroy :: proc(self: ^Result, alloc := context.allocator, loc := #caller
     self^ = {}
 }
 
-// Deallocates multiple `Process_Result`.
-result_destroy_many :: proc(
+result_destroy_many :: proc {
+    result_errs_destroy,
+    result_destroy_many_slice,
+}
+
+result_destroy_many_slice :: proc(
     selves: []Result,
     alloc := context.allocator,
     loc := #caller_location,
@@ -272,6 +276,49 @@ result_destroy_many :: proc(
     for &result in selves {
         result_destroy(&result, alloc, loc)
     }
+}
+
+/*
+Stores multiple `Result` with their `Error` returned by `process_wait_many`.
+See `process_wait_many`.
+*/
+Result_Errs :: #soa[]struct {
+    result: Result,
+    err:    Error,
+}
+
+// See `unwrap`.
+// `res` can be deallocated with `result_destroy_many_slice`.
+result_errs_unwrap :: proc(
+    self: Result_Errs,
+    msg: string = "",
+    loc := #caller_location,
+) -> (
+    res: []Result,
+    ok: bool,
+) #optional_ok {
+    for result in self {
+        if result.err != nil {
+            _unwrap_print(result.err, msg, loc)
+            ok = false
+            return
+        }
+    }
+    delete(self)
+    return self.result[:len(self)], true
+}
+
+// Deallocates results of `Result_Errs`. Does not handle the errors.
+result_errs_destroy :: proc(
+    self: ^Result_Errs,
+    alloc := context.allocator,
+    loc := #caller_location,
+) {
+    for &result in self {
+        result_destroy(&result.result, alloc, loc)
+    }
+    delete(self^)
+    self^ = {}
 }
 
 

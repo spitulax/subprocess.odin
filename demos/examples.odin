@@ -113,7 +113,7 @@ main :: proc() {
             process, _ = sp.run_shell_async("echo HELLO, WORLD!", {output = .Capture})
         }
         results := sp.process_wait_many(processes[:])
-        defer sp.result_destroy_many(results.result[:len(results)])
+        defer sp.result_destroy_many(&results)
         for result in results {
             if result.err == nil {
                 sp.log_info(result.result.stdout)

@@ -32,13 +32,12 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
     stderr_pipe, stderr_pipe_ok := &self.stderr_pipe.?
     stdin_pipe, stdin_pipe_ok := &self.stdin_pipe.?
     stdout_buf, stderr_buf: [dynamic]byte
-    stdout_bytes_read, stderr_bytes_read: uint
-    INITIAL_BUF_SIZE :: 1 * mem.Kilobyte
+    INITIAL_BUF_CAP :: 1 * mem.Kilobyte
     if stdout_pipe_ok {
-        stdout_buf = make([dynamic]byte, INITIAL_BUF_SIZE, alloc)
+        stdout_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP, alloc)
     }
     if stderr_pipe_ok {
-        stderr_buf = make([dynamic]byte, INITIAL_BUF_SIZE, alloc)
+        stderr_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP, alloc)
     }
     defer if stdout_pipe_ok {
         delete(stdout_buf)
@@ -50,10 +49,10 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
     for {
         bytes_read: uint
         if stdout_pipe_ok {
-            bytes_read += pipe_read(stdout_pipe, &stdout_buf, &stdout_bytes_read, loc) or_return
+            bytes_read += _pipe_read(stdout_pipe^, &stdout_buf, loc) or_return
         }
         if stderr_pipe_ok {
-            bytes_read += pipe_read(stderr_pipe, &stderr_buf, &stderr_bytes_read, loc) or_return
+            bytes_read += _pipe_read(stderr_pipe^, &stderr_buf, loc) or_return
         }
         if bytes_read == 0 {
             break
@@ -78,11 +77,11 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
 
     if stdout_pipe_ok {
         pipe_ensure_closed(stdout_pipe) or_return
-        result.stdout = strings.clone_from_bytes(stdout_buf[:stdout_bytes_read], alloc)
+        result.stdout = strings.clone_from_bytes(stdout_buf[:], alloc)
     }
     if stderr_pipe_ok {
         pipe_ensure_closed(stderr_pipe) or_return
-        result.stderr = strings.clone_from_bytes(stderr_buf[:stderr_bytes_read], alloc)
+        result.stderr = strings.clone_from_bytes(stderr_buf[:], alloc)
     }
     if stdin_pipe_ok {
         pipe_ensure_closed(stdin_pipe) or_return
@@ -373,41 +372,29 @@ pipe_ensure_closed :: proc(self: ^Pipe) -> (err: Error) {
 }
 
 @(require_results)
-pipe_read :: proc(
-    self: ^Pipe,
-    buf: ^[dynamic]byte,
-    total_bytes_read: ^uint,
-    loc: Loc,
-) -> (
-    bytes_read: uint,
-    err: Error,
-) {
+_pipe_read :: proc(self: Pipe, buf: ^[dynamic]byte, loc: Loc) -> (bytes_read: uint, err: Error) {
     if self.read == win.INVALID_HANDLE_VALUE {return}
-    init_len := total_bytes_read^
+    init_len: uint = len(buf)
     defer if err != nil {
         resize(buf, init_len)
     }
     for {
         loop_bytes_read: win.DWORD
-        ok := win.ReadFile(
-            self.read,
-            raw_data(buf[total_bytes_read^:]),
-            win.DWORD(len(buf[total_bytes_read^:])),
-            &loop_bytes_read,
-            nil,
-        )
+        slice := raw_data(buf^)[len(buf):]
+        ok := win.ReadFile(self.read, slice, win.DWORD(cap(buf) - len(buf)), &loop_bytes_read, nil)
         if loop_bytes_read == 0 {
             break
         } else if !ok {
             err = Internal_Error.Pipe_Read_Failed
             return
         }
-        total_bytes_read^ += uint(loop_bytes_read)
-        if total_bytes_read^ >= len(buf) {
-            resize(buf, 2 * len(buf))
+        non_zero_resize(buf, len(buf) + int(loop_bytes_read))
+        if len(buf) >= cap(buf) {
+            reserve(buf, 2 * cap(buf))
         }
     }
-    return total_bytes_read^ - init_len, nil
+    assert(init_len <= len(buf))
+    return len(buf) - init_len, nil
 }
 
 @(require_results)
