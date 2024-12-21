@@ -56,27 +56,43 @@ Handle error in return values by logging it with `log_error`.
 Example:
 	result, err := run_prog_sync("command")
 	// or ...
-	result = unwrap(run_prog_sync("command")) // prints the error using `log_error`
+	result = unwrap(run_prog_sync("command")) // if returns error, prints it using `log_error`
 */
-// TODO: custom err message
 unwrap :: proc {
     unwrap_0,
     unwrap_1,
 }
 
-// See `unwrap`.
-unwrap_0 :: proc(err: Error, loc := #caller_location) -> (ok: bool) {
-    if err != nil {
+@(private)
+_unwrap_print :: proc(err: Error, msg: string, loc: Loc) {
+    if msg == "" {
         log_error(err, loc = loc)
+    } else {
+        log_errorf("%s: %v", msg, err, loc = loc)
+    }
+}
+
+// See `unwrap`.
+unwrap_0 :: proc(err: Error, msg: string = "", loc := #caller_location) -> (ok: bool) {
+    if err != nil {
+        _unwrap_print(err, msg, loc)
         return false
     }
     return true
 }
 
 // See `unwrap`.
-unwrap_1 :: proc(ret: $T, err: Error, loc := #caller_location) -> (res: T, ok: bool) #optional_ok {
+unwrap_1 :: proc(
+    ret: $T,
+    err: Error,
+    msg: string = "",
+    loc := #caller_location,
+) -> (
+    res: T,
+    ok: bool,
+) #optional_ok {
     if err != nil {
-        log_error(err, loc = loc)
+        _unwrap_print(err, msg, loc)
         ok = false
         return
     }
