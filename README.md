@@ -24,7 +24,7 @@ See [`demos/examples.odin`](./demos/examples.odin).
 ```odin
 package main
 
-import sp "subprocess.odin"
+import sp "subprocess"
 
 main :: proc() {
     cmd, cmd_err := sp.command_make("cc") // Will search from PATH
@@ -42,3 +42,26 @@ main :: proc() {
 
 // See more examples in demos/examples.odin
 ```
+
+## Building Docs
+
+1. Compile `odin-doc`
+   1. Clone <https://github.com/odin-lang/pkg.odin-lang.org>
+   2. Build it: `odin build . -out:odin-doc`
+
+Then,
+
+2. `make docs`
+3. `cd docs/site`
+4. `python3 -m http.server 10101`
+5. Go to `localhost:10101`
+
+Or alternatively,
+
+2. `cd docs`
+3. `make serve`
+4. Go to `localhost:10101`
+
+## Changelog
+
+See [changelog](CHANGELOG.md).

@@ -1,0 +1,21 @@
+{
+  "hide_core": true,
+  "hide_base": true,
+  "url_prefix": "",
+  "collections": {
+    "subprocess": {
+      "name": "subprocess",
+      "source_url": "https://github.com/spitulax/subprocess.odin/tree/main",
+      "base_url": "/subprocess",
+      "root_path": "../..",
+      "license": {
+        "text": "MIT",
+        "url": "https://github.com/spitulax/subprocess.odin/tree/main/LICENSE"
+      },
+      "home": {
+        "title": "subprocess.odin",
+        "embed_readme": "../../README.md"
+      }
+    }
+  }
+}

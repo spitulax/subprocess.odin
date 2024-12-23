@@ -10,8 +10,6 @@ ifneq ($(filter windows_%, $(TARGET)),)
 	IS_WINDOWS = 1
 endif
 
-.PHONY: test demo
-
 REPO_ROOT := $(realpath ./.)
 
 ODIN ?= odin
@@ -38,8 +36,13 @@ ifdef NAME
 	DEMO_ARGS += NAME=$(NAME)
 endif
 
+.PHONY: test demo docs
+
 test:
 	$(ODIN) test tests $(ARGS) -define:REPO_ROOT="$(REPO_ROOT)"
 
 demo:
 	make -B -C "$(REPO_ROOT)/demos" run $(DEMO_ARGS)
+
+docs:
+	make -B -C "$(REPO_ROOT)/docs"

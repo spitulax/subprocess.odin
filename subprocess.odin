@@ -1,8 +1,5 @@
 package subprocess
 
-// MAYBE: store the location of where `run_prog*` is called in `Process`
-// then store it and the location of `process_wait*` in `Process_Result`
-
 import "base:intrinsics"
 import "core:log"
 import "core:mem"
@@ -75,7 +72,7 @@ _unwrap_print :: proc(err: Error, msg: string, loc: Loc) {
     }
 }
 
-// See `unwrap`.
+// Prefer `unwrap`.
 unwrap_0 :: proc(err: Error, msg: string = "", loc := #caller_location) -> (ok: bool) {
     if err != nil {
         _unwrap_print(err, msg, loc)
@@ -84,7 +81,7 @@ unwrap_0 :: proc(err: Error, msg: string = "", loc := #caller_location) -> (ok: 
     return true
 }
 
-// See `unwrap`.
+// Prefer `unwrap`.
 unwrap_1 :: proc(
     ret: $T,
     err: Error,
@@ -210,15 +207,15 @@ process_wait :: proc(
 
 /*
 Wait for multiple `Process` to exit.
-Stores the result and error for each `Process` in a SoA struct.
+Stores the result and error for each `Process` in an SoA struct.
 The result was allocated with `alloc`.
 
 Example:
-	results := process_wait_many(processes)
-    defer delete(results)
-	for result in results {
-	    result := result.result
-	    err := result.err
+	result_errs := process_wait_many(processes)
+	defer lib.result_destroy_many(&result_errs)
+	for result in result_errs {
+		result := result.result
+		err := result.err
 	}
 */
 process_wait_many :: proc(
@@ -270,6 +267,7 @@ result_destroy_many :: proc {
     result_destroy_many_slice,
 }
 
+// Prefer `result_destroy`.
 result_destroy_many_slice :: proc(
     selves: []Result,
     alloc := context.allocator,
@@ -289,7 +287,7 @@ Result_Errs :: #soa[]struct {
     err:    Error,
 }
 
-// See `unwrap`.
+// Prefer `unwrap`.
 // `res` can be deallocated with `result_destroy_many_slice`.
 result_errs_unwrap :: proc(
     self: Result_Errs,
@@ -311,7 +309,10 @@ result_errs_unwrap :: proc(
     return self.result[:len(self)], true
 }
 
-// Deallocates results of `Result_Errs`. Does not handle the errors.
+/*
+Deallocates results of `Result_Errs`. Does not handle the errors.
+Prefer `result_destroy`.
+*/
 result_errs_destroy :: proc(
     self: ^Result_Errs,
     alloc := context.allocator,
@@ -365,27 +366,6 @@ Exec_Opts :: struct {
     dont_echo_command: bool,
 }
 
-
-/*
-Runs a program asynchronously.
-The process will keep running in parallel until explicitly waited using `process_wait*`.
-
-Inputs:
-- prog: The program to run as a `Program` or a string. `unchecked` version accepts a string, `checked` version accepts a `Program`.
-- args: Arguments to the program.
-*/
-//run_prog_async :: proc {
-//    run_prog_async_unchecked,
-//    run_prog_async_checked,
-//}
-
-// Runs a program synchronously.
-// The procedure will wait for the process.
-// See `run_prog_async` for informations about the parameters.
-//run_prog_sync :: proc {
-//    run_prog_sync_unchecked,
-//    run_prog_sync_checked,
-//}
 
 // Stores representation of an executable program.
 Program :: struct {
