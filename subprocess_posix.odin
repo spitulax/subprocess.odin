@@ -47,16 +47,16 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
     INITIAL_BUF_CAP :: 1 * mem.Kilobyte
     if stdout_pipe_ok {
         pipe_close_write(stdout_pipe) or_return
-        stdout_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP)
+        stdout_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP, alloc)
     }
     if stderr_pipe_ok {
         pipe_close_write(stderr_pipe) or_return
-        stderr_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP)
+        stderr_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP, alloc)
     }
-    defer if stdout_pipe_ok {
+    defer if err != nil && stdout_pipe_ok {
         delete(stdout_buf)
     }
-    defer if stderr_pipe_ok {
+    defer if err != nil && stderr_pipe_ok {
         delete(stderr_buf)
     }
 
@@ -97,11 +97,10 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
                 err = General_Error.Program_Not_Executed
             } else {
                 if stdout_pipe_ok {
-                    // FIXME: remove unecessary clones
-                    result.stdout = strings.clone_from_bytes(stdout_buf[:], alloc)
+                    result.stdout = stdout_buf[:]
                 }
                 if stderr_pipe_ok {
-                    result.stderr = strings.clone_from_bytes(stderr_buf[:], alloc)
+                    result.stderr = stderr_buf[:]
                 }
             }
         }
@@ -284,7 +283,7 @@ _program :: proc(name: string, alloc: Alloc, loc: Loc) -> (path: string, err: Er
         return
     }
 
-    path = strings.clone(trim_nl(res.stdout), alloc, loc)
+    path = strings.clone(trim_nl(string(res.stdout)), alloc, loc)
     return
 }
 

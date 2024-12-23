@@ -237,8 +237,6 @@ process_wait_many :: proc(
 }
 
 
-// FIXME: Expose stdout and stderr as []byte
-
 // Stores the result of a `Process` that has exited.
 Result :: struct {
     // The exit status.
@@ -247,10 +245,10 @@ Result :: struct {
     duration: time.Duration,
     // The contents of stdout.
     // Empty if `Process.stdout_pipe` is nil.
-    stdout:   string,
+    stdout:   []byte,
     // The contents of stderr.
     // Empty if `Process.stderr_pipe` is nil.
-    stderr:   string,
+    stderr:   []byte,
     // NOTE: I didn't make `stdout` and `stderr` Maybe() for "convenience" when accessing them
 }
 

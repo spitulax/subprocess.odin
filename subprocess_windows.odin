@@ -36,15 +36,15 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
     stdout_buf, stderr_buf: [dynamic]byte
     INITIAL_BUF_CAP :: 1 * mem.Kilobyte
     if stdout_pipe_ok {
-        stdout_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP)
+        stdout_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP, alloc)
     }
     if stderr_pipe_ok {
-        stderr_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP)
+        stderr_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP, alloc)
     }
-    defer if stdout_pipe_ok {
+    defer if err != nil && stdout_pipe_ok {
         delete(stdout_buf)
     }
-    defer if stderr_pipe_ok {
+    defer if err != nil && stderr_pipe_ok {
         delete(stderr_buf)
     }
 
@@ -79,11 +79,11 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
 
     if stdout_pipe_ok {
         pipe_ensure_closed(stdout_pipe) or_return
-        result.stdout = strings.clone_from_bytes(stdout_buf[:], alloc)
+        result.stdout = stdout_buf[:]
     }
     if stderr_pipe_ok {
         pipe_ensure_closed(stderr_pipe) or_return
-        result.stderr = strings.clone_from_bytes(stderr_buf[:], alloc)
+        result.stderr = stderr_buf[:]
     }
     if stdin_pipe_ok {
         pipe_ensure_closed(stdin_pipe) or_return
