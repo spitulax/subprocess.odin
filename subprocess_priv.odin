@@ -9,6 +9,7 @@ import "core:log"
 import "core:strings"
 
 
+// FIXME: Not thread safe
 g_flags: Flags_Set
 
 
@@ -269,5 +270,26 @@ combine_args :: proc(
     }
 
     return strings.to_string(b)
+}
+
+process_wait_assert :: proc(self: ^Process) {
+    stdout_pipe_ok := self.stdout_pipe != nil
+    stderr_pipe_ok := self.stderr_pipe != nil
+    stdin_pipe_ok := self.stdin_pipe != nil
+    MSG :: "The state of `Process` does not match its `opts`"
+    switch self.opts.output {
+    case .Share, .Silent:
+        assert(!stdout_pipe_ok && !stderr_pipe_ok, MSG)
+    case .Capture:
+        assert(stdout_pipe_ok && stderr_pipe_ok, MSG)
+    case .Capture_Combine:
+        assert(stdout_pipe_ok && !stderr_pipe_ok, MSG)
+    }
+    switch self.opts.input {
+    case .Share, .Nothing:
+        assert(!stdin_pipe_ok, MSG)
+    case .Pipe:
+        assert(stdin_pipe_ok, MSG)
+    }
 }
 

@@ -38,6 +38,8 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
         self.stdin_pipe = nil
     }
 
+    process_wait_assert(self)
+
     stdout_pipe, stdout_pipe_ok := &self.stdout_pipe.?
     stderr_pipe, stderr_pipe_ok := &self.stderr_pipe.?
     stdin_pipe, stdin_pipe_ok := &self.stdin_pipe.?
@@ -45,11 +47,11 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
     INITIAL_BUF_CAP :: 1 * mem.Kilobyte
     if stdout_pipe_ok {
         pipe_close_write(stdout_pipe) or_return
-        stdout_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP, alloc)
+        stdout_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP)
     }
     if stderr_pipe_ok {
         pipe_close_write(stderr_pipe) or_return
-        stderr_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP, alloc)
+        stderr_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP)
     }
     defer if stdout_pipe_ok {
         delete(stdout_buf)
@@ -62,10 +64,10 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
         for {
             bytes_read: uint
             if stdout_pipe_ok {
-                bytes_read += _pipe_read(stdout_pipe^, &stdout_buf, loc) or_return
+                bytes_read += _pipe_read(stdout_pipe, &stdout_buf, loc) or_return
             }
             if stderr_pipe_ok {
-                bytes_read += _pipe_read(stderr_pipe^, &stderr_buf, loc) or_return
+                bytes_read += _pipe_read(stderr_pipe, &stderr_buf, loc) or_return
             }
             if bytes_read == 0 {
                 break
@@ -95,6 +97,7 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
                 err = General_Error.Program_Not_Executed
             } else {
                 if stdout_pipe_ok {
+                    // FIXME: remove unecessary clones
                     result.stdout = strings.clone_from_bytes(stdout_buf[:], alloc)
                 }
                 if stderr_pipe_ok {
@@ -127,14 +130,13 @@ _exec_async :: proc(
     err: Error,
 ) {
     stdout_pipe, stderr_pipe, stdin_pipe: _Pipe
-    dev_null: posix.FD
+    dev_null: posix.FD = -1
 
     switch opts.output {
     case .Share:
         break
     case .Silent:
-        dev_null = posix.open("/dev/null", {.RDWR, .CREAT}, {.IWUSR, .IWGRP, .IWOTH})
-        assert(posix.errno() == .NONE, "could not open /dev/null")
+        open_dev_null(&dev_null)
     case .Capture:
         pipe_init(&stdout_pipe) or_return
         pipe_init(&stderr_pipe) or_return
@@ -146,10 +148,7 @@ _exec_async :: proc(
     case .Share:
         break
     case .Nothing:
-        if dev_null == 0 {
-            dev_null = posix.open("/dev/null", {.RDWR, .CREAT}, {.IWUSR, .IWGRP, .IWOTH})
-            assert(posix.errno() == .NONE, "could not open /dev/null")
-        }
+        open_dev_null(&dev_null)
     case .Pipe:
         pipe_init(&stdin_pipe) or_return
     }
@@ -233,9 +232,7 @@ _exec_async :: proc(
             wrap(pipe_close_read(&stdin_pipe))
         }
 
-        if opts.output == .Silent || opts.input == .Nothing {
-            fd_close(&dev_null) or_return
-        }
+        close_dev_null(&dev_null)
 
         if posix.execve(argv[0], raw_data(argv), env) == FAIL {
             wrap(General_Error.Program_Not_Executed)
@@ -250,9 +247,8 @@ _exec_async :: proc(
     }
     delete(argv)
 
-    if opts.output == .Silent || opts.input == .Nothing {
-        fd_close(&dev_null) or_return
-    }
+    close_dev_null(&dev_null)
+
     switch opts.output {
     case .Share, .Silent:
         process.stdout_pipe = nil
@@ -267,6 +263,7 @@ _exec_async :: proc(
     if opts.input == .Pipe {
         process.stdin_pipe = stdin_pipe
     }
+    process.opts = opts
     process.handle = child_pid
     return
 }
@@ -374,28 +371,43 @@ pipe_redirect_write :: proc(self: ^Pipe, newfd: posix.FD) -> (err: Error) {
 }
 
 @(require_results)
-_pipe_read :: proc(self: Pipe, buf: ^[dynamic]byte, loc: Loc) -> (bytes_read: uint, err: Error) {
+_pipe_read :: proc(self: ^Pipe, buf: ^[dynamic]byte, loc: Loc) -> (bytes_read: uint, err: Error) {
     if self.struc.read == -1 {return}
+    pipe_close_write(self) or_return
     init_len: uint = len(buf)
     defer if err != nil {
         resize(buf, init_len)
     }
-    for {
-        slice := raw_data(buf^)[len(buf):]
-        loop_bytes_read := posix.read(self.struc.read, slice, cap(buf) - len(buf))
-        if loop_bytes_read == 0 {
-            break
-        } else if loop_bytes_read == FAIL {
-            err = Internal_Error.Pipe_Read_Failed
-            return
-        }
-        non_zero_resize(buf, len(buf) + loop_bytes_read)
-        if len(buf) >= cap(buf) {
-            reserve(buf, 2 * cap(buf))
-        }
-    }
+    for (_pipe_read_once(self, buf, loc) or_return) != 0 {}
     assert(init_len <= len(buf))
     return len(buf) - init_len, nil
+}
+
+@(require_results)
+_pipe_read_once :: proc(
+    self: ^Pipe,
+    buf: ^[dynamic]byte,
+    loc: Loc,
+) -> (
+    bytes_read: uint,
+    err: Error,
+) {
+    if self.struc.read == -1 {return}
+    pipe_close_write(self) or_return
+    slice := raw_data(buf^)[len(buf):]
+    int_bytes_read := posix.read(self.struc.read, slice, cap(buf) - len(buf))
+    if int_bytes_read == 0 {
+        return
+    } else if int_bytes_read == FAIL {
+        err = Internal_Error.Pipe_Read_Failed
+        return
+    }
+    bytes_read = uint(int_bytes_read)
+    non_zero_resize(buf, len(buf) + int(bytes_read))
+    if len(buf) >= cap(buf) {
+        reserve(buf, 2 * cap(buf))
+    }
+    return
 }
 
 @(require_results)
@@ -431,12 +443,29 @@ fd_redirect :: proc(fd: posix.FD, newfd: posix.FD) -> (err: Internal_Error) {
 }
 
 @(require_results)
-fd_close :: proc(fd: ^posix.FD) -> (err: Internal_Error) {
-    if fd^ == -1 {return}
-    if posix.close(fd^) == .FAIL {
+fd_close :: proc(fd: posix.FD) -> (err: Internal_Error) {
+    if fd == -1 {return}
+    if posix.close(fd) == .FAIL {
         return Internal_Error.Fd_Close_Failed
     }
-    fd^ = -1
     return nil
+}
+
+
+open_dev_null :: proc(fd: ^posix.FD) {
+    if fd^ == -1 {
+        fd^ = posix.open(
+            "/dev/null",
+            {.RDWR, .CREAT},
+            {.IWUSR, .IWGRP, .IWOTH, .IRUSR, .IRGRP, .IROTH},
+        )
+        assert(posix.errno() == .NONE, "could not open /dev/null")
+    }
+}
+
+close_dev_null :: proc(fd: ^posix.FD) {
+    if fd^ == -1 {return}
+    assert(fd_close(fd^) == nil, "could not close /dev/null")
+    fd^ = -1
 }
 

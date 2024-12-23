@@ -21,12 +21,13 @@ trim_nl :: proc(s: string) -> string {
     return strings.trim_suffix(s, NL)
 }
 
-expect_success :: proc(t: ^testing.T, result: lib.Result) -> bool {
+expect_success :: proc(t: ^testing.T, result: lib.Result, loc := #caller_location) -> bool {
     runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
     return testing.expect(
         t,
         lib.result_success(result),
         fmt.tprintf("Exited with code %v", result.exit),
+        loc = loc,
     )
 }
 

@@ -5,6 +5,7 @@ package subprocess
 
 import "base:intrinsics"
 import "core:log"
+import "core:mem"
 import "core:strings"
 import "core:time"
 
@@ -169,6 +170,7 @@ is_success :: proc(exit: Process_Exit) -> bool {
 }
 
 // Stores data for running process.
+// Deallocated by `process_wait*`.
 Process :: struct {
     // The process handle or PID.
     handle:         Process_Handle,
@@ -176,6 +178,8 @@ Process :: struct {
     execution_time: time.Time,
     // Is the process alive.
     alive:          bool,
+    // The options passed when executing.
+    opts:           Exec_Opts,
     // The pipe to process' stdout.
     // nil if `Output_Option` is `Share` or `Silent`.
     stdout_pipe:    Maybe(Pipe),
@@ -234,7 +238,6 @@ process_wait_many :: proc(
 
 
 // FIXME: Expose stdout and stderr as []byte
-// TODO: Allow user to immediately read output buf before the program exits
 
 // Stores the result of a `Process` that has exited.
 Result :: struct {
@@ -820,6 +823,47 @@ command_run_async :: proc(
 Pipe :: _Pipe
 
 /*
+Reads from a `Pipe`.
+Stops at whatever it received.
+If you want to read until there's nothing to read, use `pipe_read_all`.
+Closes the write end of `self`.
+*/
+pipe_read :: proc(
+    self: ^Pipe,
+    buf: ^[dynamic]byte,
+    loc := #caller_location,
+) -> (
+    bytes_read: uint,
+    err: Error,
+) {
+    return _pipe_read_once(self, buf, loc)
+}
+
+/*
+Reads from a `Pipe` until there's nothing to read.
+Closes the write end of `self`.
+*/
+pipe_read_all :: proc(
+    self: ^Pipe,
+    alloc := context.allocator,
+    loc := #caller_location,
+) -> (
+    buf: []byte,
+    err: Error,
+) {
+    INITIAL_BUF_CAP :: 1 * mem.Kilobyte
+    buf_dyn := make([dynamic]byte, 0, INITIAL_BUF_CAP, alloc)
+    for {
+        bytes_read := _pipe_read(self, &buf_dyn, loc) or_return
+        if bytes_read == 0 {
+            break
+        }
+    }
+    buf = buf_dyn[:]
+    return
+}
+
+/*
 Write to a `Pipe`.
 
 Inputs:
@@ -836,7 +880,7 @@ pipe_write_buf :: proc(
     buf: []byte,
     send_newline: bool = true,
 ) -> (
-    n: int,
+    bytes_written: int,
     err: Error,
 ) {
     if send_newline {
@@ -858,7 +902,7 @@ pipe_write_string :: proc(
     str: string,
     send_newline: bool = true,
 ) -> (
-    n: int,
+    bytes_written: int,
     err: Error,
 ) {
     if send_newline {

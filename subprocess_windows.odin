@@ -28,16 +28,18 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
         result_destroy(&result, alloc)
     }
 
+    process_wait_assert(self)
+
     stdout_pipe, stdout_pipe_ok := &self.stdout_pipe.?
     stderr_pipe, stderr_pipe_ok := &self.stderr_pipe.?
     stdin_pipe, stdin_pipe_ok := &self.stdin_pipe.?
     stdout_buf, stderr_buf: [dynamic]byte
     INITIAL_BUF_CAP :: 1 * mem.Kilobyte
     if stdout_pipe_ok {
-        stdout_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP, alloc)
+        stdout_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP)
     }
     if stderr_pipe_ok {
-        stderr_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP, alloc)
+        stderr_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP)
     }
     defer if stdout_pipe_ok {
         delete(stdout_buf)
@@ -49,10 +51,10 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
     for {
         bytes_read: uint
         if stdout_pipe_ok {
-            bytes_read += _pipe_read(stdout_pipe^, &stdout_buf, loc) or_return
+            bytes_read += _pipe_read(stdout_pipe, &stdout_buf, loc) or_return
         }
         if stderr_pipe_ok {
-            bytes_read += _pipe_read(stderr_pipe^, &stderr_buf, loc) or_return
+            bytes_read += _pipe_read(stderr_pipe, &stderr_buf, loc) or_return
         }
         if bytes_read == 0 {
             break
@@ -111,23 +113,14 @@ _exec_async :: proc(
     start_info: win.STARTUPINFOW
     start_info.cb = size_of(win.STARTUPINFOW)
     stdout_pipe, stderr_pipe, stdin_pipe: _Pipe
-    dev_null: win.HANDLE
+    dev_null: win.HANDLE = win.INVALID_HANDLE_VALUE
 
     switch opts.output {
     case .Share:
         start_info.hStdOutput = win.GetStdHandle(win.STD_OUTPUT_HANDLE)
         start_info.hStdError = win.GetStdHandle(win.STD_ERROR_HANDLE)
     case .Silent:
-        dev_null = win.CreateFileW(
-            win.utf8_to_wstring("NUL"),
-            win.GENERIC_WRITE | win.GENERIC_READ,
-            win.FILE_SHARE_WRITE | win.FILE_SHARE_READ,
-            &sec_attrs,
-            win.OPEN_EXISTING,
-            win.FILE_ATTRIBUTE_NORMAL,
-            nil,
-        )
-        assert(dev_null != win.INVALID_HANDLE_VALUE, "could not open NUL device")
+        open_dev_null(&dev_null, &sec_attrs)
         start_info.hStdOutput = dev_null
         start_info.hStdError = dev_null
     case .Capture:
@@ -145,18 +138,7 @@ _exec_async :: proc(
     case .Share:
         start_info.hStdInput = win.GetStdHandle(win.STD_INPUT_HANDLE)
     case .Nothing:
-        if dev_null == nil {
-            dev_null = win.CreateFileW(
-                win.utf8_to_wstring("NUL"),
-                win.GENERIC_WRITE | win.GENERIC_READ,
-                win.FILE_SHARE_WRITE | win.FILE_SHARE_READ,
-                &sec_attrs,
-                win.OPEN_EXISTING,
-                win.FILE_ATTRIBUTE_NORMAL,
-                nil,
-            )
-            assert(dev_null != win.INVALID_HANDLE_VALUE, "could not open NUL device")
-        }
+        open_dev_null(&dev_null, &sec_attrs)
         start_info.hStdInput = dev_null
     case .Pipe:
         pipe_init(&stdin_pipe, &sec_attrs) or_return
@@ -229,9 +211,7 @@ _exec_async :: proc(
         &proc_info,
     )
 
-    if opts.output == .Silent || opts.input == .Nothing {
-        handle_close(&dev_null) or_return
-    }
+    close_dev_null(&dev_null)
 
     switch opts.output {
     case .Share, .Silent:
@@ -267,6 +247,7 @@ _exec_async :: proc(
             process.stdin_pipe = stdin_pipe
         }
 
+        process.opts = opts
         process.handle = {proc_info.hProcess, proc_info.hThread}
     } else {
         switch opts.output {
@@ -372,29 +353,42 @@ pipe_ensure_closed :: proc(self: ^Pipe) -> (err: Error) {
 }
 
 @(require_results)
-_pipe_read :: proc(self: Pipe, buf: ^[dynamic]byte, loc: Loc) -> (bytes_read: uint, err: Error) {
+_pipe_read :: proc(self: ^Pipe, buf: ^[dynamic]byte, loc: Loc) -> (bytes_read: uint, err: Error) {
     if self.read == win.INVALID_HANDLE_VALUE {return}
     init_len: uint = len(buf)
     defer if err != nil {
         resize(buf, init_len)
     }
-    for {
-        loop_bytes_read: win.DWORD
-        slice := raw_data(buf^)[len(buf):]
-        ok := win.ReadFile(self.read, slice, win.DWORD(cap(buf) - len(buf)), &loop_bytes_read, nil)
-        if loop_bytes_read == 0 {
-            break
-        } else if !ok {
-            err = Internal_Error.Pipe_Read_Failed
-            return
-        }
-        non_zero_resize(buf, len(buf) + int(loop_bytes_read))
-        if len(buf) >= cap(buf) {
-            reserve(buf, 2 * cap(buf))
-        }
-    }
+    for (_pipe_read_once(self, buf, loc) or_return) != 0 {}
     assert(init_len <= len(buf))
     return len(buf) - init_len, nil
+}
+
+@(require_results)
+_pipe_read_once :: proc(
+    self: ^Pipe,
+    buf: ^[dynamic]byte,
+    loc: Loc,
+) -> (
+    bytes_read: uint,
+    err: Error,
+) {
+    if self.read == win.INVALID_HANDLE_VALUE {return}
+    dword_bytes_read: win.DWORD
+    slice := raw_data(buf^)[len(buf):]
+    ok := win.ReadFile(self.read, slice, win.DWORD(cap(buf) - len(buf)), &dword_bytes_read, nil)
+    if dword_bytes_read == 0 {
+        return
+    } else if !ok {
+        err = Internal_Error.Pipe_Read_Failed
+        return
+    }
+    bytes_read = uint(dword_bytes_read)
+    non_zero_resize(buf, len(buf) + int(bytes_read))
+    if len(buf) >= cap(buf) {
+        reserve(buf, 2 * cap(buf))
+    }
+    return
 }
 
 @(require_results)
@@ -430,5 +424,26 @@ handle_close :: proc(handle: ^win.HANDLE) -> (err: Error) {
     }
     handle^ = win.INVALID_HANDLE_VALUE
     return nil
+}
+
+open_dev_null :: proc(handle: ^win.HANDLE, sec_attrs: ^win.SECURITY_ATTRIBUTES) {
+    if handle == nil || handle^ == win.INVALID_HANDLE_VALUE {
+        handle^ = win.CreateFileW(
+            win.utf8_to_wstring("NUL"),
+            win.GENERIC_WRITE | win.GENERIC_READ,
+            win.FILE_SHARE_WRITE | win.FILE_SHARE_READ,
+            sec_attrs,
+            win.OPEN_EXISTING,
+            win.FILE_ATTRIBUTE_NORMAL,
+            nil,
+        )
+        assert(handle^ != win.INVALID_HANDLE_VALUE, "could not open NUL device")
+    }
+}
+
+close_dev_null :: proc(handle: ^win.HANDLE) {
+    if handle^ == win.INVALID_HANDLE_VALUE {return}
+    assert(handle_close(handle) == nil, "could not close NUL device")
+    handle^ = win.INVALID_HANDLE_VALUE
 }
 
