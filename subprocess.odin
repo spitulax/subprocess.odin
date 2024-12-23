@@ -7,6 +7,7 @@ import "base:intrinsics"
 import "core:log"
 import "core:mem"
 import "core:strings"
+import "core:sync"
 import "core:time"
 
 
@@ -353,13 +354,15 @@ Input_Option :: enum u8 {
 // Options for executing processes.
 Exec_Opts :: struct {
     // The `Output_Option`.
-    output:    Output_Option,
+    output:            Output_Option,
     // The `Input_Option`.
-    input:     Input_Option,
+    input:             Input_Option,
     // Whether the process will not inherit environment variables of the parent process.
-    zero_env:  bool,
+    zero_env:          bool,
     // Extra environment variables with a format of "key=value". If `zero_env` is true, it is basically the only environment variables of the process.
-    extra_env: []string,
+    extra_env:         []string,
+    // `Flags.Echo_Commands*` override.
+    dont_echo_command: bool,
 }
 
 
@@ -429,11 +432,8 @@ program_check :: proc(
     prog: Program,
     err: Error,
 ) {
-    flags_temp := g_flags
-    default_flags_disable({.Echo_Commands, .Echo_Commands_Debug})
     path: string
     path, err = _program(name, alloc, loc)
-    g_flags = flags_temp
     if err != nil {
         delete(path, alloc)
         return Program{false, ""}, err
@@ -1016,22 +1016,31 @@ pipe_write_string :: proc(
 
 // Returns the flags.
 @(require_results)
-default_flags :: proc() -> Flags_Set {
-    return g_flags
+default_flags :: proc "contextless" () -> Flags_Set {
+    if sync.rw_mutex_shared_guard(&g_flags.mutex) {
+        return g_flags.value
+    }
+    unreachable()
 }
 
 // Sets the flags.
-default_flags_set :: proc(flags: Flags_Set) {
-    g_flags = flags
+default_flags_set :: proc "contextless" (flags: Flags_Set) {
+    if sync.rw_mutex_guard(&g_flags.mutex) {
+        g_flags.value = flags
+    }
 }
 
 // Enables some flags.
-default_flags_enable :: proc(flags: Flags_Set) {
-    g_flags += flags
+default_flags_enable :: proc "contextless" (flags: Flags_Set) {
+    if sync.rw_mutex_guard(&g_flags.mutex) {
+        g_flags.value += flags
+    }
 }
 
 // Disable some flags.
-default_flags_disable :: proc(flags: Flags_Set) {
-    g_flags -= flags
+default_flags_disable :: proc "contextless" (flags: Flags_Set) {
+    if sync.rw_mutex_guard(&g_flags.mutex) {
+        g_flags.value -= flags
+    }
 }
 

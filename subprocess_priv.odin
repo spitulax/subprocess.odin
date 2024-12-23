@@ -7,16 +7,20 @@ import "core:fmt"
 import "core:io"
 import "core:log"
 import "core:strings"
+import "core:sync"
 
 
-// FIXME: Not thread safe
-g_flags: Flags_Set
+g_flags: Global(Flags_Set)
 
 
 OS_Set :: bit_set[runtime.Odin_OS_Type]
 Alloc :: runtime.Allocator
 Loc :: runtime.Source_Code_Location
 Default_Logger_Opts :: log.Options{.Short_File_Path, .Line}
+Global :: struct($T: typeid) {
+    value: T,
+    mutex: sync.RW_Mutex,
+}
 
 
 when ODIN_OS in POSIX_OS {
@@ -73,7 +77,7 @@ log_header :: proc(
 }
 
 _log :: proc(level: log.Level, str: string, loc: Loc) {
-    if .Use_Context_Logger in g_flags {
+    if .Use_Context_Logger in default_flags() {
         log.log(level, str, location = loc)
     } else {
         _log_no_flag(level, str, loc)
@@ -183,18 +187,25 @@ trim_nl :: proc(s: string) -> string {
 
 
 // NOTE: What this procedure prints should be runnable inside the system shell without modification
-print_cmd :: proc(opts: Exec_Opts, mode: Escaping_Mode, prog: string, args: []string, loc: Loc) {
+echo_command :: proc(
+    opts: Exec_Opts,
+    mode: Escaping_Mode,
+    prog: string,
+    args: []string,
+    loc: Loc,
+) {
+    if opts.dont_echo_command {return}
     runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
-    if g_flags & {.Echo_Commands, .Echo_Commands_Debug} != {} {
+    if default_flags() & {.Echo_Commands, .Echo_Commands_Debug} != {} {
         msg := fmt.tprintf(
             "(%v|%v) %s",
             opts.output,
             opts.input,
             combine_args(prog, args, mode, context.temp_allocator),
         )
-        if .Echo_Commands in g_flags {
+        if .Echo_Commands in default_flags() {
             log_info(msg, loc = loc)
-        } else if .Echo_Commands_Debug in g_flags {
+        } else if .Echo_Commands_Debug in default_flags() {
             log_debug(msg, loc = loc)
         }
     }

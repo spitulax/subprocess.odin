@@ -24,8 +24,6 @@ run_nothing :: proc(t: ^testing.T, process: ^lib.Process) -> (ok: bool) {
 
 @(test)
 stdin :: proc(t: ^testing.T) {
-    lib.default_flags_enable({.Use_Context_Logger, .Echo_Commands})
-
     cmd, cmd_ok := lib.unwrap(lib.command_make("bash"))
     if !cmd_ok {return}
     defer lib.command_destroy(&cmd)

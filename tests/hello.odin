@@ -5,8 +5,6 @@ import "core:testing"
 
 @(test)
 hello :: proc(t: ^testing.T) {
-    lib.default_flags_enable({.Use_Context_Logger, .Echo_Commands})
-
     ok: bool
     result: lib.Result
     result, ok = lib.unwrap(lib.run_shell_sync("echo Hello, World!"))

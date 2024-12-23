@@ -26,8 +26,10 @@ ifdef TARGET
 	ARGS += -target:$(TARGET)
 endif
 ifdef NAME
-	ARGS += -define:ODIN_TEST_NAMES=tests.$(NAME)
+	ARGS += -define:ODIN_TEST_NAMES=tests._init,tests.$(NAME)
 endif
+ARGS += -define:ODIN_TEST_ALWAYS_REPORT_MEMORY=true
+ARGS += -define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true
 
 ifdef TARGET
 	DEMO_ARGS += TARGET=$(TARGET)

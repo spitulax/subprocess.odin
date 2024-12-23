@@ -5,8 +5,6 @@ import "core:testing"
 
 @(test)
 program :: proc(t: ^testing.T) {
-    lib.default_flags_enable({.Use_Context_Logger, .Echo_Commands})
-
     _, err := lib.program_run(
         lib.program("notarealcommand", context.temp_allocator),
         {"--help"},

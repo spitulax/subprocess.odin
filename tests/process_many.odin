@@ -4,6 +4,7 @@ import lib ".."
 import "core:log"
 import "core:testing"
 
+@(private = "file")
 create_processes :: proc(
     t: ^testing.T,
     loc := #caller_location,
@@ -20,8 +21,6 @@ create_processes :: proc(
 
 @(test)
 process_many :: proc(t: ^testing.T) {
-    lib.default_flags_enable({.Use_Context_Logger, .Echo_Commands})
-
     {
         processes, processes_ok := create_processes(t)
         if !processes_ok {return}

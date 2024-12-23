@@ -7,8 +7,6 @@ import "core:time"
 
 @(test)
 cmd_sync :: proc(t: ^testing.T) {
-    lib.default_flags_enable({.Use_Context_Logger, .Echo_Commands})
-
     before := time.now()
     results: [10]lib.Result
     defer lib.result_destroy_many(results[:])

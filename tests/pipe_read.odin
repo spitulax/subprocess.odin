@@ -4,12 +4,11 @@ import lib ".."
 import "core:os"
 import "core:testing"
 
+@(private = "file")
 FILE :: "subprocess.odin"
 
 @(test)
 pipe_read :: proc(t: ^testing.T) {
-    lib.default_flags_enable({.Use_Context_Logger, .Echo_Commands})
-
     file_content, file_content_err := os.read_entire_file_from_filename_or_err(FILE)
     if !testing.expectf(
         t,

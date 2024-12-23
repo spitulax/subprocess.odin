@@ -160,7 +160,7 @@ _exec_async :: proc(
     }
     argv[len(argv) - 1] = nil
 
-    print_cmd(opts, .POSIX, prog, args, loc)
+    echo_command(opts, .POSIX, prog, args, loc)
 
     env: [^]cstring
     env_cap := -1
@@ -274,7 +274,7 @@ _program :: proc(name: string, alloc: Alloc, loc: Loc) -> (path: string, err: Er
     res = exec(
         "/bin/sh",
         {"-c", fmt.tprintf("command -v '%s'", name)},
-        {output = .Capture},
+        {output = .Capture, dont_echo_command = true},
         alloc = context.temp_allocator,
     ) or_return
 

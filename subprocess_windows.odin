@@ -152,7 +152,7 @@ _exec_async :: proc(
 
     mode: Escaping_Mode = .Win_Cmd if fpath.stem(prog) == "cmd" else .Win_API
     cmd := combine_args(prog, args, mode, context.temp_allocator)
-    print_cmd(opts, mode, prog, args, loc)
+    echo_command(opts, mode, prog, args, loc)
 
     env: [^]win.WCHAR
     env_cap := -1
@@ -275,7 +275,7 @@ _program :: proc(name: string, alloc: Alloc, loc: Loc) -> (path: string, err: Er
     res = exec(
         "cmd",
         {"/C", fmt.tprint("where", name, "&& exit 0 || exit 1")},
-        {output = .Capture},
+        {output = .Capture, dont_echo_command = true},
         alloc = context.temp_allocator,
     ) or_return
 

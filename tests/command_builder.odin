@@ -37,8 +37,6 @@ test :: proc(t: ^testing.T, cmd: lib.Command) -> bool {
 
 @(test)
 command_builder :: proc(t: ^testing.T) {
-    lib.default_flags_enable({.Use_Context_Logger, .Echo_Commands})
-
     {
         cmd := lib.unwrap(lib.command_make(SH))
         defer lib.command_destroy(&cmd)

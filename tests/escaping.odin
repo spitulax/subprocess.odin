@@ -5,8 +5,6 @@ import "core:testing"
 
 @(test)
 escaping :: proc(t: ^testing.T) {
-    lib.default_flags_enable({.Use_Context_Logger, .Echo_Commands})
-
     bash, bash_ok := lib.unwrap(lib.command_make("bash"))
     if !bash_ok {return}
     defer lib.command_destroy(&bash)
