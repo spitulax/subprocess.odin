@@ -1,7 +1,6 @@
 package tests
 
 import lib ".."
-import "core:log"
 import "core:os"
 import "core:testing"
 
@@ -21,26 +20,16 @@ compiler :: proc(t: ^testing.T) {
     EXEC_PATH :: "/main.exe" when ODIN_OS in lib.WINDOWS_OS else "/main"
 
     result, result_ok := lib.unwrap(lib.command_run(cc))
+    if !result_ok {return}
     defer lib.result_destroy(&result)
-    if result_ok {
-        if !lib.result_success(result) {
-            log.errorf("gcc exited with %v: %s", result.exit, result.stderr)
-            return
-        }
-    }
+    if !expect_result(t, result) {return}
 
     compiled_prog := lib.program(RATS_DIR + EXEC_PATH, context.temp_allocator)
-    if !testing.expect(t, compiled_prog.found) {return}
+    if !testing.expect(t, compiled_prog.found, "The rat program is not found") {return}
     result2, result2_ok := lib.unwrap(lib.program_run(compiled_prog, {}, {output = .Capture}))
+    if !result2_ok {return}
     defer lib.result_destroy(&result2)
-    if result2_ok {
-        if !lib.result_success(result2) {
-            log.errorf("program exited with %v: %s", result2.exit, result2.stderr)
-            return
-        }
-        testing.expect_value(t, result2.stdout, "Hello, World!\n")
-        testing.expect_value(t, result2.stderr, "")
-    }
+    if !expect_result(t, result2, "Hello, World!\n", "") {return}
 
     if os.exists(RATS_DIR + EXEC_PATH) {
         os.remove(RATS_DIR + EXEC_PATH)

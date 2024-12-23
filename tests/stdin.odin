@@ -18,9 +18,7 @@ run_pipe :: proc(t: ^testing.T, process: ^lib.Process) -> (result: lib.Result, o
 run_nothing :: proc(t: ^testing.T, process: ^lib.Process) -> (ok: bool) {
     result := lib.unwrap(lib.process_wait(process)) or_return
     defer lib.result_destroy(&result)
-    testing.expect_value(t, result.exit, 1) or_return
-    testing.expect_value(t, result.stdout, "") or_return
-    testing.expect_value(t, result.stderr, "") or_return
+    expect_result(t, result, "", "", lib.Process_Exit(1)) or_return
     return true
 }
 
@@ -37,8 +35,7 @@ stdin :: proc(t: ^testing.T) {
 
     if process, process_ok := lib.unwrap(lib.command_run_async(cmd)); process_ok {
         if result, ok := run_pipe(t, &process); ok {
-            testing.expect_value(t, result.stdout, "")
-            testing.expect_value(t, result.stderr, "")
+            expect_result(t, result, "", "")
             lib.result_destroy(&result)
         }
     }
@@ -46,8 +43,7 @@ stdin :: proc(t: ^testing.T) {
     cmd.opts.output = .Silent
     if process, process_ok := lib.unwrap(lib.command_run_async(cmd)); process_ok {
         if result, ok := run_pipe(t, &process); ok {
-            testing.expect_value(t, result.stdout, "")
-            testing.expect_value(t, result.stderr, "")
+            expect_result(t, result, "", "")
             lib.result_destroy(&result)
         }
     }
@@ -55,8 +51,7 @@ stdin :: proc(t: ^testing.T) {
     cmd.opts.output = .Capture
     if process, process_ok := lib.unwrap(lib.command_run_async(cmd)); process_ok {
         if result, ok := run_pipe(t, &process); ok {
-            testing.expect_value(t, result.stdout, "Hello World" + NL)
-            testing.expect_value(t, result.stderr, "")
+            expect_result(t, result, "Hello World" + NL, "")
             lib.result_destroy(&result)
         }
     }
@@ -64,8 +59,7 @@ stdin :: proc(t: ^testing.T) {
     cmd.opts.output = .Capture_Combine
     if process, process_ok := lib.unwrap(lib.command_run_async(cmd)); process_ok {
         if result, ok := run_pipe(t, &process); ok {
-            testing.expect_value(t, result.stdout, "Hello World" + NL)
-            testing.expect_value(t, result.stderr, "")
+            expect_result(t, result, "Hello World" + NL, "")
             lib.result_destroy(&result)
         }
     }

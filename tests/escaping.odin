@@ -15,9 +15,9 @@ escaping :: proc(t: ^testing.T) {
         result := lib.unwrap(lib.run_shell_sync("echo \"Hello, World!\"", {output = .Capture}))
         defer lib.result_destroy(&result)
         when ODIN_OS in lib.POSIX_OS {
-            testing.expect_value(t, result.stdout, "Hello, World!" + NL)
+            expect_result(t, result, "Hello, World!" + NL, "")
         } else when ODIN_OS in lib.WINDOWS_OS {
-            testing.expect_value(t, result.stdout, "\"Hello, World!\"" + NL)
+            expect_result(t, result, "\"Hello, World!\"" + NL, "")
         }
     }
 
@@ -26,7 +26,7 @@ escaping :: proc(t: ^testing.T) {
             lib.command_run(bash, lib.Exec_Opts{output = .Capture}, {"-c", "echo \"~\""}),
         )
         defer lib.result_destroy(&result)
-        testing.expect_value(t, result.stdout, "~\n")
+        expect_result(t, result, "~\n", "")
     }
 }
 

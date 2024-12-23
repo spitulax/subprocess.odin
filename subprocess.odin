@@ -293,6 +293,7 @@ Result_Errs :: #soa[]struct {
 result_errs_unwrap :: proc(
     self: Result_Errs,
     msg: string = "",
+    alloc := context.allocator,
     loc := #caller_location,
 ) -> (
     res: []Result,
@@ -305,7 +306,7 @@ result_errs_unwrap :: proc(
             return
         }
     }
-    delete(self)
+    delete(self, allocator = alloc, loc = loc)
     return self.result[:len(self)], true
 }
 

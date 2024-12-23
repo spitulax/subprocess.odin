@@ -9,6 +9,7 @@ main :: proc() {
     defer sp.result_destroy(&result)
     if ok {
         sp.log_info(result)
+        sp.log_info("Output:", string(result.stdout))
     }
 }
 

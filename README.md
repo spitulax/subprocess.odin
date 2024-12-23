@@ -36,6 +36,7 @@ main :: proc() {
     result, result_err := sp.command_run(cmd)
     if result_err == nil {
         sp.log_info(result)
+        sp.log_info("Output:", string(result.stdout))
     }
 }
 

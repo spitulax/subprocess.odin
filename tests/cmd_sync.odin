@@ -16,9 +16,7 @@ cmd_sync :: proc(t: ^testing.T) {
         ok: bool
         result, ok = lib.unwrap(lib.run_shell("echo HELLO, WORLD!", {output = .Capture}))
         if ok {
-            expect_success(t, result)
-            testing.expect_value(t, result.stdout, "HELLO, WORLD!" + NL)
-            testing.expect_value(t, result.stderr, "")
+            expect_result(t, result, "HELLO, WORLD!" + NL, "")
         }
     }
     log.infof("Time elapsed: %v", time.since(before))

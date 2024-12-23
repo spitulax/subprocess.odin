@@ -33,16 +33,20 @@ env :: proc(t: ^testing.T) {
     result, ok = lib.unwrap(lib.run_shell_sync(echo(USER), {output = .Capture}))
     if ok {
         defer lib.result_destroy(&result)
-        testing.expect_value(t, trim_nl(result.stdout), os.get_env(USER, context.temp_allocator))
+        testing.expect_value(
+            t,
+            trim_nl(string(result.stdout)),
+            os.get_env(USER, context.temp_allocator),
+        )
     }
 
     result, ok = lib.unwrap(lib.run_shell_sync(echo(USER), {output = .Capture, zero_env = true}))
     if ok {
         defer lib.result_destroy(&result)
         when ODIN_OS in lib.POSIX_OS {
-            testing.expect_value(t, trim_nl(result.stdout), "")
+            testing.expect_value(t, trim_nl(string(result.stdout)), "")
         } else when ODIN_OS in lib.WINDOWS_OS {
-            testing.expect_value(t, trim_nl(result.stdout), var(USER))
+            testing.expect_value(t, trim_nl(string(result.stdout)), var(USER))
         }
     }
 
@@ -54,7 +58,7 @@ env :: proc(t: ^testing.T) {
     )
     if ok {
         defer lib.result_destroy(&result)
-        testing.expect_value(t, trim_nl(result.stdout), "foobar")
+        testing.expect_value(t, trim_nl(string(result.stdout)), "foobar")
     }
 
     result, ok = lib.unwrap(
@@ -65,7 +69,7 @@ env :: proc(t: ^testing.T) {
     )
     if ok {
         defer lib.result_destroy(&result)
-        testing.expect_value(t, trim_nl(result.stdout), "foobar")
+        testing.expect_value(t, trim_nl(string(result.stdout)), "foobar")
     }
 }
 

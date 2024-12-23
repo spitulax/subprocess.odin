@@ -291,7 +291,7 @@ _program :: proc(name: string, alloc: Alloc, loc: Loc) -> (path: string, err: Er
         return
     }
 
-    path = strings.clone(trim_nl(res.stdout), alloc, loc)
+    path = strings.clone(trim_nl(string(res.stdout)), alloc, loc)
     return
 }
 

@@ -12,18 +12,17 @@ cmd_async :: proc(t: ^testing.T) {
     before := time.now()
     processes: [10]lib.Process
     for &process in processes {
-        process = lib.unwrap(lib.run_shell_async("echo HELLO, WORLD!", {output = .Capture}))
+        ok: bool
+        process, ok = lib.unwrap(lib.run_shell_async("echo HELLO, WORLD!", {output = .Capture}))
+        if !ok || !expect_process(t, process) {return}
     }
-    results := lib.process_wait_many(processes[:], context.temp_allocator)
+    results := lib.unwrap(
+        lib.process_wait_many(processes[:], context.temp_allocator),
+        alloc = context.temp_allocator,
+    )
     for result, i in results {
-        if result.err != nil {
-            log.error(result.err)
-        } else {
-            expect_success(t, result.result)
-            testing.expect_value(t, processes[i].alive, false)
-            testing.expect_value(t, result.result.stdout, "HELLO, WORLD!" + NL)
-            testing.expect_value(t, result.result.stderr, "")
-        }
+        testing.expect_value(t, processes[i].alive, false)
+        expect_result(t, result, "HELLO, WORLD!" + NL, "")
     }
     log.infof("Time elapsed: %v", time.since(before))
 }

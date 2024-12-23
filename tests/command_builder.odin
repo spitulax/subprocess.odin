@@ -25,33 +25,24 @@ command_builder :: proc(t: ^testing.T) {
             if !oks[i] {
                 continue
             }
-            expect_success(t, x)
-            testing.expect_value(t, x.stdout, "Hello, World!" + NL if i == 1 else "")
-            testing.expect_value(t, x.stderr, "")
+            expect_result(t, x, "Hello, World!" + NL if i == 1 else "", "")
         }
     }
 
     {
         PROCESSES :: 5
         processes: [PROCESSES]lib.Process
-        for i in 0 ..< PROCESSES {
-            processes[i] = lib.unwrap(lib.command_run_async(cmd, lib.Exec_Opts{output = .Capture}))
+        for &process in processes {
+            ok: bool
+            process, ok = lib.unwrap(lib.command_run_async(cmd, lib.Exec_Opts{output = .Capture}))
+            if !ok {return}
         }
-        res := lib.process_wait_many(processes[:])
-        defer {
-            proc_res, _ := soa_unzip(res)
-            lib.result_destroy_many(proc_res)
-        }
-        defer delete(res)
+        res, res_ok := lib.unwrap(lib.process_wait_many(processes[:]))
+        defer lib.result_destroy_many(res)
+        if !res_ok {return}
         testing.expect_value(t, len(res), PROCESSES)
         for x in res {
-            if x.err != nil {
-                log.error(x.err)
-            } else {
-                expect_success(t, x.result)
-                testing.expect_value(t, x.result.stdout, "Hello, World!" + NL)
-                testing.expect_value(t, x.result.stderr, "")
-            }
+            expect_result(t, x, "Hello, World!" + NL, "")
         }
     }
 }

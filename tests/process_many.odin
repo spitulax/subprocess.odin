@@ -4,16 +4,16 @@ import lib ".."
 import "core:log"
 import "core:testing"
 
-create_processes :: proc(t: ^testing.T) -> (processes: [10]lib.Process, ok: bool) {
+create_processes :: proc(
+    t: ^testing.T,
+    loc := #caller_location,
+) -> (
+    processes: [10]lib.Process,
+    ok: bool,
+) {
     for &process in processes {
-        process = lib.unwrap(
-            lib.run_shell_async("echo HELLO, WORLD!", {output = .Capture}),
-        ) or_return
-        // FIXME: Move expects of `Process` and `Result` to `utils.odin`
-        testing.expect(t, process.alive)
-        testing.expect(t, process.stdout_pipe != nil)
-        testing.expect(t, process.stderr_pipe != nil)
-        testing.expect(t, process.stdin_pipe == nil)
+        process, ok = lib.unwrap(lib.run_shell_async("echo HELLO, WORLD!", {output = .Capture}))
+        if !ok || !expect_process(t, process, loc) {return}
     }
     return processes, true
 }
@@ -25,13 +25,12 @@ process_many :: proc(t: ^testing.T) {
     {
         processes, processes_ok := create_processes(t)
         if !processes_ok {return}
-        results := lib.unwrap(lib.process_wait_many(processes[:]))
+        results, results_ok := lib.unwrap(lib.process_wait_many(processes[:]))
+        if !results_ok {return}
         defer lib.result_destroy_many(results)
         for result, i in results {
-            expect_success(t, result)
             testing.expect_value(t, processes[i].alive, false)
-            testing.expect_value(t, result.stdout, "HELLO, WORLD!" + NL)
-            testing.expect_value(t, result.stderr, "")
+            expect_result(t, result, "HELLO, WORLD!" + NL, "")
         }
     }
 
@@ -44,10 +43,8 @@ process_many :: proc(t: ^testing.T) {
             if result.err != nil {
                 log.error(result.err)
             } else {
-                expect_success(t, result.result)
                 testing.expect_value(t, processes[i].alive, false)
-                testing.expect_value(t, result.result.stdout, "HELLO, WORLD!" + NL)
-                testing.expect_value(t, result.result.stderr, "")
+                expect_result(t, result.result, "HELLO, WORLD!" + NL, "")
             }
         }
     }

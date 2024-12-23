@@ -14,17 +14,13 @@ capture :: proc(t: ^testing.T) {
         result1, result1_ok := lib.unwrap(lib.run_shell("echo HELLO, STDOUT!", opts))
         defer lib.result_destroy(&result1)
         if result1_ok {
-            expect_success(t, result1)
-            testing.expect_value(t, result1.stdout, "HELLO, STDOUT!" + NL)
-            testing.expect_value(t, result1.stderr, "")
+            expect_result(t, result1, "HELLO, STDOUT!" + NL, "")
         }
 
         result2, result2_ok := lib.unwrap(lib.run_shell("echo HELLO, STDERR!>&2", opts))
         defer lib.result_destroy(&result2)
         if result2_ok {
-            expect_success(t, result2)
-            testing.expect_value(t, result2.stdout, "")
-            testing.expect_value(t, result2.stderr, "HELLO, STDERR!" + NL)
+            expect_result(t, result2, "", "HELLO, STDERR!" + NL)
         }
 
         result3, result3_ok := lib.unwrap(
@@ -32,9 +28,7 @@ capture :: proc(t: ^testing.T) {
         )
         defer lib.result_destroy(&result3)
         if result3_ok {
-            expect_success(t, result3)
-            testing.expect_value(t, result3.stdout, "HELLO, STDOUT!" + NL)
-            testing.expect_value(t, result3.stderr, "HELLO, STDERR!" + NL)
+            expect_result(t, result3, "HELLO, STDOUT!" + NL, "HELLO, STDERR!" + NL)
         }
     }
 
@@ -45,17 +39,13 @@ capture :: proc(t: ^testing.T) {
         result1, result1_ok := lib.unwrap(lib.run_shell("echo HELLO, STDOUT!", opts))
         defer lib.result_destroy(&result1)
         if result1_ok {
-            expect_success(t, result1)
-            testing.expect_value(t, result1.stdout, "HELLO, STDOUT!" + NL)
-            testing.expect_value(t, result1.stderr, "")
+            expect_result(t, result1, "HELLO, STDOUT!" + NL, "")
         }
 
         result2, result2_ok := lib.unwrap(lib.run_shell("echo HELLO, STDERR!>&2", opts))
         defer lib.result_destroy(&result2)
         if result2_ok {
-            expect_success(t, result2)
-            testing.expect_value(t, result2.stdout, "HELLO, STDERR!" + NL)
-            testing.expect_value(t, result2.stderr, "")
+            expect_result(t, result2, "HELLO, STDERR!" + NL, "")
         }
 
         result3, result3_ok := lib.unwrap(
@@ -63,9 +53,7 @@ capture :: proc(t: ^testing.T) {
         )
         defer lib.result_destroy(&result3)
         if result3_ok {
-            expect_success(t, result3)
-            testing.expect_value(t, result3.stdout, "HELLO, STDOUT!" + NL + "HELLO, STDERR!" + NL)
-            testing.expect_value(t, result3.stderr, "")
+            expect_result(t, result3, "HELLO, STDOUT!" + NL + "HELLO, STDERR!" + NL, "")
         }
     }
 }

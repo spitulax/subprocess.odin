@@ -85,15 +85,15 @@ main :: proc() {
         // Separating stdout and stderr
         result, err := sp.run_shell("echo Hello, World!>&2", {output = .Capture})
         if err == nil {
-            sp.log_info(result.stdout)
-            sp.log_info(result.stderr)
+            sp.log_info(string(result.stdout))
+            sp.log_info(string(result.stderr))
         }
         sp.result_destroy(&result)
 
         // Combining stdout and stderr
         result, err = sp.run_shell("echo Hello, World!>&2", {output = .Capture_Combine})
         if err == nil {
-            sp.log_info(result.stdout)
+            sp.log_info(string(result.stdout))
         }
         sp.result_destroy(&result)
     }
@@ -116,7 +116,7 @@ main :: proc() {
         defer sp.result_destroy_many(&results)
         for result in results {
             if result.err == nil {
-                sp.log_info(result.result.stdout)
+                sp.log_info(string(result.result.stdout))
             }
         }
     }
