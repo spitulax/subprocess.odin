@@ -583,7 +583,18 @@ command_make :: proc {
     command_make_prog_len_cap,
 }
 
-// TODO: command_init*
+/*
+Initialise a `Command`.
+`prog` version accepts a `Program` and clones it, otherwise it accepts the program name.
+*/
+command_init :: proc {
+    command_init_none,
+    command_init_len,
+    command_init_len_cap,
+    command_init_prog_none,
+    command_init_prog_len,
+    command_init_prog_len_cap,
+}
 
 @(private)
 _command_make :: proc(
@@ -599,6 +610,21 @@ _command_make :: proc(
         opts = opts,
         alloc = alloc,
     }
+}
+
+@(private)
+_command_init :: proc(
+    self: ^Command,
+    prog: Program,
+    opts: Exec_Opts,
+    len, cap: int,
+    alloc: Alloc,
+    loc: Loc,
+) {
+    self.prog = prog
+    self.args = make([dynamic]string, len, cap, alloc, loc)
+    self.opts = opts
+    self.alloc = alloc
 }
 
 // See `command_make`.
@@ -669,11 +695,8 @@ command_make_prog_none :: proc(
     opts: Exec_Opts = {},
     alloc := context.allocator,
     loc := #caller_location,
-) -> (
-    res: Command,
-    err: Error,
-) {
-    return _command_make(program_clone(prog, alloc, loc), opts, 0, 0, alloc, loc), nil
+) -> Command {
+    return _command_make(program_clone(prog, alloc, loc), opts, 0, 0, alloc, loc)
 }
 
 // See `command_make`.
@@ -684,11 +707,8 @@ command_make_prog_len :: proc(
     opts: Exec_Opts = {},
     alloc := context.allocator,
     loc := #caller_location,
-) -> (
-    res: Command,
-    err: Error,
-) {
-    return _command_make(program_clone(prog, alloc, loc), opts, len, len, alloc, loc), nil
+) -> Command {
+    return _command_make(program_clone(prog, alloc, loc), opts, len, len, alloc, loc)
 }
 
 // See `command_make`.
@@ -699,11 +719,90 @@ command_make_prog_len_cap :: proc(
     opts: Exec_Opts = {},
     alloc := context.allocator,
     loc := #caller_location,
+) -> Command {
+    return _command_make(program_clone(prog, alloc, loc), opts, len, cap, alloc, loc)
+}
+
+// See `command_init`.
+@(require_results)
+command_init_none :: proc(
+    self: ^Command,
+    prog_name: string,
+    opts: Exec_Opts = {},
+    alloc := context.allocator,
+    loc := #caller_location,
 ) -> (
-    res: Command,
     err: Error,
 ) {
-    return _command_make(program_clone(prog, alloc, loc), opts, len, cap, alloc, loc), nil
+    _command_init(self, program_check(prog_name, alloc, loc) or_return, opts, 0, 0, alloc, loc)
+    return nil
+}
+
+// See `command_init`.
+@(require_results)
+command_init_len :: proc(
+    self: ^Command,
+    prog_name: string,
+    len: int,
+    opts: Exec_Opts = {},
+    alloc := context.allocator,
+    loc := #caller_location,
+) -> (
+    err: Error,
+) {
+    _command_init(self, program_check(prog_name, alloc, loc) or_return, opts, len, len, alloc, loc)
+    return nil
+}
+
+// See `command_init`.
+@(require_results)
+command_init_len_cap :: proc(
+    self: ^Command,
+    prog_name: string,
+    len, cap: int,
+    opts: Exec_Opts = {},
+    alloc := context.allocator,
+    loc := #caller_location,
+) -> (
+    err: Error,
+) {
+    _command_init(self, program_check(prog_name, alloc, loc) or_return, opts, len, cap, alloc, loc)
+    return nil
+}
+
+// See `command_init`.
+command_init_prog_none :: proc(
+    self: ^Command,
+    prog: Program,
+    opts: Exec_Opts = {},
+    alloc := context.allocator,
+    loc := #caller_location,
+) {
+    _command_init(self, program_clone(prog, alloc, loc), opts, 0, 0, alloc, loc)
+}
+
+// See `command_init`.
+command_init_prog_len :: proc(
+    self: ^Command,
+    prog: Program,
+    len: int,
+    opts: Exec_Opts = {},
+    alloc := context.allocator,
+    loc := #caller_location,
+) {
+    _command_init(self, program_clone(prog, alloc, loc), opts, len, len, alloc, loc)
+}
+
+// See `command_init`.
+command_init_prog_len_cap :: proc(
+    self: ^Command,
+    prog: Program,
+    len, cap: int,
+    opts: Exec_Opts = {},
+    alloc := context.allocator,
+    loc := #caller_location,
+) {
+    _command_init(self, program_clone(prog, alloc, loc), opts, len, cap, alloc, loc)
 }
 
 // Appends to the arguments.
