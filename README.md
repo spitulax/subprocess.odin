@@ -33,11 +33,10 @@ main :: proc() {
     if cmd_err != nil {return}
     defer sp.command_destroy(&cmd)
     sp.command_append(&cmd, "--version")
-    result, result_err := sp.command_run(cmd)
-    if result_err == nil {
-        sp.log_info(result)
-        sp.log_info("Output:", string(result.stdout))
-    }
+    result, result_err := sp.command_run(cmd, sp.Exec_Opts{output = .Capture})
+    if result_err != nil {return}
+    defer sp.result_destroy(&result)
+    sp.log_info("Output:", string(result.stdout))
 }
 
 // See more examples in demos/examples.odin

@@ -10,10 +10,9 @@ main :: proc() {
     // Running a shell command
     {
         result, err := sp.run_shell("echo Hello, World!")
+        if err != nil {return}
         defer sp.result_destroy(&result)
-        if err == nil {
-            sp.log_info(result)
-        }
+        sp.log_info(result)
     }
 
     // Running a program (via `Command`)
@@ -25,9 +24,9 @@ main :: proc() {
         defer sp.command_destroy(&cmd)
         sp.command_append(&cmd, "--version")
         result, result_err := sp.command_run(cmd)
-        if result_err == nil {
-            sp.log_info(result)
-        }
+        if result_err != nil {return}
+        defer sp.result_destroy(&result)
+        sp.log_info(result)
     }
 
     // Running a program (via `Program`)
@@ -36,11 +35,10 @@ main :: proc() {
         // File paths are also valid
         // prog := sp.program("./bin/cc")
         defer sp.program_destroy(&prog)
-        result, err := sp.program_run(prog, {"--version"})
+        result, result_err := sp.program_run(prog, {"--version"})
+        if result_err != nil {return}
         defer sp.result_destroy(&result)
-        if err == nil {
-            sp.log_info(result)
-        }
+        sp.log_info(result)
     }
 
     // Using `Command`
@@ -71,12 +69,11 @@ main :: proc() {
 
     // Checking exit status
     {
-        result, err := sp.run_shell("exit 1")
+        result, result_err := sp.run_shell("exit 1")
+        if result_err != nil {return}
         defer sp.result_destroy(&result)
-        if err == nil {
-            if !sp.result_success(result) {
-                sp.log_info("Program exited abnormally:", result.exit)
-            }
+        if !sp.result_success(result) {
+            sp.log_info("Program exited abnormally:", result.exit)
         }
     }
 
@@ -136,10 +133,9 @@ main :: proc() {
         if process_err != nil {return}
         sp.pipe_write(process.stdin_pipe.?, "Hello, World!")
         result, result_err := sp.process_wait(&process)
+        if result_err != nil {return}
         defer sp.result_destroy(&result)
-        if result_err == nil {
-            sp.log_info(result)
-        }
+        sp.log_info(result)
     }
 
     // Using the library's logger
@@ -148,6 +144,20 @@ main :: proc() {
         sp.log_info("Hello!")
         // Now it's the same as
         log.info("Hello!")
+    }
+
+    // Example from README.md
+    {
+        cmd, cmd_err := sp.command_make("cc") // Will search from PATH
+        // File paths are also valid
+        // prog := sp.command_make("./bin/cc")
+        if cmd_err != nil {return}
+        defer sp.command_destroy(&cmd)
+        sp.command_append(&cmd, "--version")
+        result, result_err := sp.command_run(cmd, sp.Exec_Opts{output = .Capture})
+        if result_err != nil {return}
+        defer sp.result_destroy(&result)
+        sp.log_info("Output:", string(result.stdout))
     }
 }
 
