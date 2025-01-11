@@ -4,7 +4,7 @@ import lib ".."
 import "core:os"
 import "core:testing"
 
-REPO_ROOT :: #config(REPO_ROOT, "")
+@(private = "file")
 RATS_DIR :: REPO_ROOT + "/" + ODIN_BUILD_PROJECT_NAME + "/rats/compiler"
 
 @(test)

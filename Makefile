@@ -2,6 +2,7 @@
 # NAME=<test name> (example: cmd_async)
 # TARGET=<target> (example: windows_amd64, linux_amd64)
 # ODIN=<odin executable>
+# DEBUG=1 (debug tests)
 
 ifeq ($(OS),Windows_NT)
 	IS_WINDOWS = 1
@@ -19,7 +20,11 @@ ARGS += -vet-packages:subprocess
 ARGS += -disallow-do
 ARGS += -warnings-as-errors
 ARGS += -use-separate-modules
-ARGS += -o:speed
+ifeq ($(DEBUG),1)
+	ARGS += -debug
+else
+	ARGS += -o:speed
+endif
 ifdef TARGET
 	ARGS += -target:$(TARGET)
 endif

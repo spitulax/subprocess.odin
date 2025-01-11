@@ -12,7 +12,14 @@ import "core:time"
 
 
 FAIL :: -1
-EARLY_EXIT_CODE :: 211 // Just a random number that is hopefully never be used by any program
+// Random numbers that are hopefully never used by any program.
+// This is a little bit weird because for now, the only way for a child process
+// to send information to its parent is by return code.
+// Using something like shared memory may work, but it would have to be explicitly
+// deallocated by the user.
+EXIT_CWD_FAILED :: 210
+EXIT_PIPE_FAILED :: 211
+EXIT_EXECVE_FAILED :: 212
 
 
 Exit_Code :: distinct u32
@@ -93,9 +100,14 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
                 pipe_ensure_closed(stdin_pipe) or_return
             }
 
-            if posix.WEXITSTATUS(status) == EARLY_EXIT_CODE {
-                err = General_Error.Program_Not_Executed
-            } else {
+            switch posix.WEXITSTATUS(status) {
+            case EXIT_CWD_FAILED:
+                err = Internal_Error.Set_Cwd_Failed
+            case EXIT_PIPE_FAILED:
+                err = Internal_Error.Pipe_Failed
+            case EXIT_EXECVE_FAILED:
+                err = Internal_Error.Execve_Failed
+            case:
                 if stdout_pipe_ok {
                     result.stdout = stdout_buf[:]
                 }
@@ -190,51 +202,55 @@ _exec_async :: proc(
     }
 
     if child_pid == 0 {
-        wrap :: proc(err: Error) {
+        unwrap :: proc(err: Error) {
             if err != nil {
-                os.exit(EARLY_EXIT_CODE)
+                os.exit(EXIT_PIPE_FAILED)
             }
+        }
+
+        if opts.cwd != "" && os.set_current_directory(opts.cwd) != nil {
+            os.exit(EXIT_CWD_FAILED)
         }
 
         switch opts.output {
         case .Share:
             break
         case .Silent:
-            wrap(fd_redirect(dev_null, posix.STDOUT_FILENO))
-            wrap(fd_redirect(dev_null, posix.STDERR_FILENO))
+            unwrap(fd_redirect(dev_null, posix.STDOUT_FILENO))
+            unwrap(fd_redirect(dev_null, posix.STDERR_FILENO))
         case .Capture:
-            wrap(pipe_close_read(&stdout_pipe))
-            wrap(pipe_close_read(&stderr_pipe))
+            unwrap(pipe_close_read(&stdout_pipe))
+            unwrap(pipe_close_read(&stderr_pipe))
 
-            wrap(pipe_redirect_write(&stdout_pipe, posix.STDOUT_FILENO))
-            wrap(pipe_redirect_write(&stderr_pipe, posix.STDERR_FILENO))
+            unwrap(pipe_redirect_write(&stdout_pipe, posix.STDOUT_FILENO))
+            unwrap(pipe_redirect_write(&stderr_pipe, posix.STDERR_FILENO))
 
-            wrap(pipe_close_write(&stdout_pipe))
-            wrap(pipe_close_write(&stderr_pipe))
+            unwrap(pipe_close_write(&stdout_pipe))
+            unwrap(pipe_close_write(&stderr_pipe))
         case .Capture_Combine:
-            wrap(pipe_close_read(&stdout_pipe))
+            unwrap(pipe_close_read(&stdout_pipe))
 
-            wrap(pipe_redirect_write(&stdout_pipe, posix.STDOUT_FILENO))
-            wrap(fd_redirect(posix.STDOUT_FILENO, posix.STDERR_FILENO))
+            unwrap(pipe_redirect_write(&stdout_pipe, posix.STDOUT_FILENO))
+            unwrap(fd_redirect(posix.STDOUT_FILENO, posix.STDERR_FILENO))
 
-            wrap(pipe_close_write(&stdout_pipe))
+            unwrap(pipe_close_write(&stdout_pipe))
         }
 
         switch opts.input {
         case .Share:
             break
         case .Nothing:
-            wrap(fd_redirect(dev_null, posix.STDIN_FILENO))
+            unwrap(fd_redirect(dev_null, posix.STDIN_FILENO))
         case .Pipe:
-            wrap(pipe_close_write(&stdin_pipe))
-            wrap(pipe_redirect_read(&stdin_pipe, posix.STDIN_FILENO))
-            wrap(pipe_close_read(&stdin_pipe))
+            unwrap(pipe_close_write(&stdin_pipe))
+            unwrap(pipe_redirect_read(&stdin_pipe, posix.STDIN_FILENO))
+            unwrap(pipe_close_read(&stdin_pipe))
         }
 
         close_dev_null(&dev_null)
 
         if posix.execve(argv[0], raw_data(argv), env) == FAIL {
-            wrap(General_Error.Program_Not_Executed)
+            os.exit(EXIT_EXECVE_FAILED)
         }
         unreachable()
     }
@@ -302,6 +318,12 @@ _Internal_Error :: enum u8 {
     Fd_Close_Failed,
     // Failed to redirect file descriptors
     Fd_Redirect_Failed,
+    // General pipe operations failure
+    Pipe_Failed,
+    // Failed to set working directory for the process.
+    Set_Cwd_Failed,
+    // `execve` returned
+    Execve_Failed,
 }
 
 

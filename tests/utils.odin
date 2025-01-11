@@ -9,6 +9,9 @@ import "core:testing"
 import "core:time"
 
 
+REPO_ROOT :: #config(REPO_ROOT, "")
+
+
 when ODIN_OS in lib.POSIX_OS {
     NL :: "\n"
     SH :: "sh"
@@ -70,17 +73,21 @@ expect_result_bytes :: proc(
     ok = testing.expectf(
         t,
         slice.equal(result.stdout, stdout),
-        "expected result.stdout to be %v, got %v",
+        "expected result.stdout to be %v \"%s\", got %v \"%s\"",
         stdout,
+        string(stdout),
         result.stdout,
+        string(result.stdout),
         loc = loc,
     )
     ok = testing.expectf(
         t,
         slice.equal(result.stderr, stderr),
-        "expected result.stderr to be %v, got %v",
+        "expected result.stderr to be %v \"%s\", got %v \"%s\"",
         stderr,
+        string(stderr),
         result.stderr,
+        string(result.stderr),
         loc = loc,
     )
     return ok

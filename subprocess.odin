@@ -364,6 +364,8 @@ Exec_Opts :: struct {
     extra_env:         []string,
     // `Flags.Echo_Commands*` override.
     dont_echo_command: bool,
+    // The working directory of the process.
+    cwd:               string,
 }
 
 

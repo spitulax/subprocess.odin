@@ -206,7 +206,7 @@ _exec_async :: proc(
         true,
         win.CREATE_UNICODE_ENVIRONMENT,
         env,
-        nil,
+        win.utf8_to_wstring(opts.cwd) if opts.cwd != "" else nil,
         &start_info,
         &proc_info,
     )
