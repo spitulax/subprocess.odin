@@ -40,6 +40,7 @@ main :: proc() {
 }
 
 // See more examples in demos/examples.odin
+// Tests are also great examples
 ```
 
 ## Building Docs
