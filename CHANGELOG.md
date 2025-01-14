@@ -11,6 +11,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `Exec_Opts.cwd`: Sets the working directory of process.
 
+### Fixed
+
+- `pipe_write_buf` and `pipe_write_string` now return uint. (Breaking)
+
 ## [0.1.0] - 2024-12-23
 
 ### Added

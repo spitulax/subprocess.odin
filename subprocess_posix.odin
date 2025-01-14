@@ -431,25 +431,26 @@ _pipe_read_once :: proc(
     return
 }
 
+
 @(require_results)
-_pipe_write_buf :: proc(self: Pipe, buf: []byte) -> (n: int, err: Error) {
+_pipe_write_buf :: proc(self: Pipe, buf: []byte) -> (n: uint, err: Error) {
     if self.struc.write == -1 {return}
-    if n = posix.write(self.struc.write, raw_data(buf), len(buf)); n == FAIL {
+    if written := posix.write(self.struc.write, raw_data(buf), len(buf)); written <= FAIL {
         err = General_Error.Pipe_Write_Failed
         return
     } else {
-        return n, nil
+        return uint(written), nil
     }
 }
 
 @(require_results)
-_pipe_write_string :: proc(self: Pipe, str: string) -> (n: int, err: Error) {
+_pipe_write_string :: proc(self: Pipe, str: string) -> (n: uint, err: Error) {
     if self.struc.write == -1 {return}
-    if n = posix.write(self.struc.write, raw_data(str), len(str)); n == FAIL {
+    if written := posix.write(self.struc.write, raw_data(str), len(str)); written <= FAIL {
         err = General_Error.Pipe_Write_Failed
         return
     } else {
-        return n, nil
+        return uint(written), nil
     }
 }
 

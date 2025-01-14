@@ -392,26 +392,26 @@ _pipe_read_once :: proc(
 }
 
 @(require_results)
-_pipe_write_buf :: proc(self: Pipe, buf: []byte) -> (n: int, err: Error) {
+_pipe_write_buf :: proc(self: Pipe, buf: []byte) -> (n: uint, err: Error) {
     if self.write == win.INVALID_HANDLE_VALUE {return}
     written: win.DWORD
     if !win.WriteFile(self.write, raw_data(buf), win.DWORD(len(buf)), &written, nil) {
         err = General_Error.Pipe_Write_Failed
         return
     } else {
-        return int(written), nil
+        return uint(written), nil
     }
 }
 
 @(require_results)
-_pipe_write_string :: proc(self: Pipe, str: string) -> (n: int, err: Error) {
+_pipe_write_string :: proc(self: Pipe, str: string) -> (n: uint, err: Error) {
     if self.write == win.INVALID_HANDLE_VALUE {return}
     written: win.DWORD
     if !win.WriteFile(self.write, raw_data(str), win.DWORD(len(str)), &written, nil) {
         err = General_Error.Pipe_Write_Failed
         return
     } else {
-        return int(written), nil
+        return uint(written), nil
     }
 }
 

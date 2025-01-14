@@ -960,7 +960,7 @@ pipe_write_buf :: proc(
     buf: []byte,
     send_newline: bool = true,
 ) -> (
-    bytes_written: int,
+    bytes_written: uint,
     err: Error,
 ) {
     if send_newline {
@@ -982,7 +982,7 @@ pipe_write_string :: proc(
     str: string,
     send_newline: bool = true,
 ) -> (
-    bytes_written: int,
+    bytes_written: uint,
     err: Error,
 ) {
     if send_newline {
