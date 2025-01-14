@@ -29,7 +29,7 @@ import sp "subprocess"
 main :: proc() {
     cmd, _ := sp.command_make("cc") // Will search from PATH
     // File paths are also valid
-    // prog := sp.command_make("./bin/cc")
+    // prog, _ := sp.command_make("./bin/cc")
     defer sp.command_destroy(&cmd)
     sp.command_append(&cmd, "--version")
     result, _ := sp.command_run(cmd, sp.Exec_Opts{output = .Capture})
