@@ -27,14 +27,12 @@ package main
 import sp "subprocess"
 
 main :: proc() {
-    cmd, cmd_err := sp.command_make("cc") // Will search from PATH
+    cmd, _ := sp.command_make("cc") // Will search from PATH
     // File paths are also valid
     // prog := sp.command_make("./bin/cc")
-    if cmd_err != nil {return}
     defer sp.command_destroy(&cmd)
     sp.command_append(&cmd, "--version")
-    result, result_err := sp.command_run(cmd, sp.Exec_Opts{output = .Capture})
-    if result_err != nil {return}
+    result, _ := sp.command_run(cmd, sp.Exec_Opts{output = .Capture})
     defer sp.result_destroy(&result)
     sp.log_info("Output:", string(result.stdout))
 }
