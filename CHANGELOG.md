@@ -11,6 +11,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `Exec_Opts.cwd`: Sets the working directory of process.
 - `pipe_read_non_append`: Reads from a pipe to a slice.
+- `command_set`: Sets the arguments of `Command`.
 
 ### Fixed
 

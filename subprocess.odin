@@ -803,6 +803,12 @@ command_append_many :: proc(self: ^Command, args: ..string, loc := #caller_locat
     append(&self.args, ..args, loc = loc)
 }
 
+// Sets the arguments.
+command_set :: proc(self: ^Command, args: ..string, loc := #caller_location) {
+    command_clear(self)
+    append(&self.args, ..args, loc = loc)
+}
+
 // Injects at the arguments.
 command_inject_at :: proc {
     command_inject_one_at,

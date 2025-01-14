@@ -57,3 +57,32 @@ command_builder :: proc(t: ^testing.T) {
     }
 }
 
+@(test)
+command_args :: proc(t: ^testing.T) {
+    cmd, cmd_ok := lib.unwrap(lib.command_make(SH))
+    if !cmd_ok {return}
+    defer lib.command_destroy(&cmd)
+
+    lib.command_append(&cmd, "Hello")
+    expect_array(t, cmd.args[:], []string{"Hello"})
+
+    lib.command_append(&cmd, "World", "Foo", "Baz")
+    expect_array(t, cmd.args[:], []string{"Hello", "World", "Foo", "Baz"})
+
+    lib.command_inject_at(&cmd, 3, "Bar")
+    expect_array(t, cmd.args[:], []string{"Hello", "World", "Foo", "Bar", "Baz"})
+
+    lib.command_inject_at(&cmd, 2, "FOO", "BAR", "BAZ")
+    expect_array(
+        t,
+        cmd.args[:],
+        []string{"Hello", "World", "FOO", "BAR", "BAZ", "Foo", "Bar", "Baz"},
+    )
+
+    lib.command_set(&cmd, "HELLO", "WORLD")
+    expect_array(t, cmd.args[:], []string{"HELLO", "WORLD"})
+
+    lib.command_clear(&cmd)
+    expect_array(t, cmd.args[:], []string{})
+}
+

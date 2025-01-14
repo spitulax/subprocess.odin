@@ -1,6 +1,7 @@
 package tests
 
 import lib ".."
+import "base:intrinsics"
 import "base:runtime"
 import "core:fmt"
 import "core:slice"
@@ -148,5 +149,24 @@ expect_process :: proc(
     }
 
     return
+}
+
+expect_array :: proc(
+    t: ^testing.T,
+    value, expected: $T/[]$E,
+    loc := #caller_location,
+) -> (
+    ok: bool,
+) where intrinsics.type_is_comparable(E) {
+    return testing.expectf(
+        t,
+        slice.equal(value, expected),
+        "expected %v (%v), got %v (%v)",
+        expected,
+        len(expected),
+        value,
+        len(value),
+        loc = loc,
+    )
 }
 
