@@ -10,6 +10,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - `Exec_Opts.cwd`: Sets the working directory of process.
+- `pipe_read_non_append`: Reads from a pipe to a slice.
 
 ### Fixed
 

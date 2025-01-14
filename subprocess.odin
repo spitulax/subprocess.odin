@@ -168,7 +168,7 @@ is_success :: proc(exit: Process_Exit) -> bool {
 }
 
 // Stores data for running process.
-// Deallocated by `process_wait*`.
+// Deallocated by `process_wait*` (also closes pipes).
 Process :: struct {
     // The process handle or PID.
     handle:         Process_Handle,
@@ -902,15 +902,37 @@ command_run_async :: proc(
 // Stores a pipe. The implementation depends on the target.
 Pipe :: _Pipe
 
+pipe_read :: proc {
+    pipe_read_append,
+    pipe_read_non_append,
+}
+
 /*
-Reads from a `Pipe`.
+Reads from a `Pipe` and appends the bytes to `buf`.
 Stops at whatever it received.
 If you want to read until there's nothing to read, use `pipe_read_all`.
 Closes the write end of `self`.
 */
-pipe_read :: proc(
+pipe_read_append :: proc(
     self: ^Pipe,
     buf: ^[dynamic]byte,
+    loc := #caller_location,
+) -> (
+    bytes_read: uint,
+    err: Error,
+) {
+    return _pipe_read_once(self, buf, loc)
+}
+
+/*
+Reads from a `Pipe` to `buf`.
+Stops at whatever it received.
+If you want to read until there's nothing to read, use `pipe_read_all`.
+Closes the write end of `self`.
+*/
+pipe_read_non_append :: proc(
+    self: ^Pipe,
+    buf: []byte,
     loc := #caller_location,
 ) -> (
     bytes_read: uint,

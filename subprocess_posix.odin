@@ -50,13 +50,18 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
     stdout_pipe, stdout_pipe_ok := &self.stdout_pipe.?
     stderr_pipe, stderr_pipe_ok := &self.stderr_pipe.?
     stdin_pipe, stdin_pipe_ok := &self.stdin_pipe.?
+    read_stdout, read_stderr :=
+        stdout_pipe_ok &&
+        stdout_pipe.struc.read != -1,
+        stderr_pipe_ok &&
+        stderr_pipe.struc.read != -1
     stdout_buf, stderr_buf: [dynamic]byte
     INITIAL_BUF_CAP :: 1 * mem.Kilobyte
-    if stdout_pipe_ok {
+    if read_stdout {
         pipe_close_write(stdout_pipe) or_return
         stdout_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP, alloc)
     }
-    if stderr_pipe_ok {
+    if read_stderr {
         pipe_close_write(stderr_pipe) or_return
         stderr_buf = make([dynamic]byte, 0, INITIAL_BUF_CAP, alloc)
     }
@@ -68,12 +73,12 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
     }
 
     for {
-        for {
+        for read_stdout || read_stderr {
             bytes_read: uint
-            if stdout_pipe_ok {
+            if read_stdout {
                 bytes_read += _pipe_read(stdout_pipe, &stdout_buf, loc) or_return
             }
-            if stderr_pipe_ok {
+            if read_stderr {
                 bytes_read += _pipe_read(stderr_pipe, &stderr_buf, loc) or_return
             }
             if bytes_read == 0 {
@@ -404,8 +409,13 @@ _pipe_read :: proc(self: ^Pipe, buf: ^[dynamic]byte, loc: Loc) -> (bytes_read: u
     return len(buf) - init_len, nil
 }
 
+_pipe_read_once :: proc {
+    _pipe_read_once_append,
+    _pipe_read_once_non_append,
+}
+
 @(require_results)
-_pipe_read_once :: proc(
+_pipe_read_once_append :: proc(
     self: ^Pipe,
     buf: ^[dynamic]byte,
     loc: Loc,
@@ -431,6 +441,27 @@ _pipe_read_once :: proc(
     return
 }
 
+@(require_results)
+_pipe_read_once_non_append :: proc(
+    self: ^Pipe,
+    buf: []byte,
+    loc := #caller_location,
+) -> (
+    bytes_read: uint,
+    err: Error,
+) {
+    if self.struc.read == -1 {return}
+    pipe_close_write(self) or_return
+    int_bytes_read := posix.read(self.struc.read, raw_data(buf), len(buf))
+    if int_bytes_read == 0 {
+        return
+    } else if int_bytes_read == FAIL {
+        err = Internal_Error.Pipe_Read_Failed
+        return
+    }
+    bytes_read = uint(int_bytes_read)
+    return
+}
 
 @(require_results)
 _pipe_write_buf :: proc(self: Pipe, buf: []byte) -> (n: uint, err: Error) {

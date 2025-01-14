@@ -364,8 +364,13 @@ _pipe_read :: proc(self: ^Pipe, buf: ^[dynamic]byte, loc: Loc) -> (bytes_read: u
     return len(buf) - init_len, nil
 }
 
+_pipe_read_once :: proc {
+    _pipe_read_once_append,
+    _pipe_read_once_non_append,
+}
+
 @(require_results)
-_pipe_read_once :: proc(
+_pipe_read_once_append :: proc(
     self: ^Pipe,
     buf: ^[dynamic]byte,
     loc: Loc,
@@ -388,6 +393,28 @@ _pipe_read_once :: proc(
     if len(buf) >= cap(buf) {
         reserve(buf, 2 * cap(buf))
     }
+    return
+}
+
+@(require_results)
+_pipe_read_once_non_append :: proc(
+    self: ^Pipe,
+    buf: []byte,
+    loc := #caller_location,
+) -> (
+    bytes_read: uint,
+    err: Error,
+) {
+    if self.read == win.INVALID_HANDLE_VALUE {return}
+    dword_bytes_read: win.DWORD
+    ok := win.ReadFile(self.read, raw_data(buf), win.DWORD(len(buf)), &dword_bytes_read, nil)
+    if dword_bytes_read == 0 {
+        return
+    } else if !ok {
+        err = Internal_Error.Pipe_Read_Failed
+        return
+    }
+    bytes_read = uint(dword_bytes_read)
     return
 }
 
