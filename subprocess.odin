@@ -366,6 +366,21 @@ Exec_Opts :: struct {
     dont_echo_command: bool,
     // The working directory of the process.
     cwd:               string,
+
+    /*
+    ------------------------------
+    The pipes that will be used redirect output or input.
+    The process will initialise the pipes automatically if they are not specified here.
+    If any of these is specified, the process will not initialise its own pipe.
+    The pipe is initialised and must be freed manually.
+    Only used when a specific option is set.
+    */
+    // Used if `output` is either `Capture` or `Capture_Combine`.
+    stdout_pipe:       Maybe(Pipe),
+    // Used if `output` is `Capture`.
+    stderr_pipe:       Maybe(Pipe),
+    // Used if `input` is `Pipe`.
+    stdin_pipe:        Maybe(Pipe),
 }
 
 
@@ -908,6 +923,20 @@ command_run_async :: proc(
 // Stores a pipe. The implementation depends on the target.
 Pipe :: _Pipe
 
+// Initialise a `Pipe`.
+// Close with `pipe_destroy`.
+@(require_results)
+pipe_make :: proc() -> (self: Pipe, err: Error) {
+    return _pipe_make()
+}
+
+// Closes a `Pipe`.
+pipe_destroy :: proc(self: ^Pipe) -> (err: Error) {
+    // NOTE: This is named `pipe_destroy` and not `pipe_close` for consistency
+    pipe_ensure_closed(self) or_return
+    return nil
+}
+
 pipe_read :: proc {
     pipe_read_append,
     pipe_read_non_append,
@@ -975,7 +1004,7 @@ pipe_read_all :: proc(
 Write to a `Pipe`.
 
 Inputs:
-- `send_newline`: Append the data with a newline (0xA).
+- `send_newline`: Append the data with a newline (\n on POSIX, \r\n on Windows).
 */
 pipe_write :: proc {
     pipe_write_buf,

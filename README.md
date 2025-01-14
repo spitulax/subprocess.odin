@@ -45,6 +45,10 @@ main :: proc() {
 
 ## Building Docs
 
+> [!WARNING]
+> The generated documentation is not great. I advise you to look at the source code for
+> documentation.
+
 1. Compile `odin-doc`
    1. Clone <https://github.com/odin-lang/pkg.odin-lang.org>
    2. Build it: `odin build . -out:odin-doc`

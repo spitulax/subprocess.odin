@@ -138,6 +138,25 @@ main :: proc() {
         sp.log_info(result)
     }
 
+    // Custom pipes
+    {
+        stdout, stdout_err := sp.pipe_make()
+        if stdout_err != nil {return}
+        defer sp.pipe_destroy(&stdout)
+        process, process_err := sp.run_shell_async(
+            "echo Hello, World!",
+            {output = .Capture_Combine, stdout_pipe = stdout},
+        )
+        if process_err != nil {return}
+        result, result_err := sp.process_wait(&process)
+        if result_err != nil {return}
+        defer sp.result_destroy(&result)
+        output, output_err := sp.pipe_read_all(&stdout)
+        if output_err != nil {return}
+        defer delete(output)
+        sp.log_info(output)
+    }
+
     // Using the library's logger
     {
         context.logger = sp.create_logger()

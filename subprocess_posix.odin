@@ -45,8 +45,6 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
         self.stdin_pipe = nil
     }
 
-    process_wait_assert(self)
-
     stdout_pipe, stdout_pipe_ok := &self.stdout_pipe.?
     stderr_pipe, stderr_pipe_ok := &self.stderr_pipe.?
     stdin_pipe, stdin_pipe_ok := &self.stdin_pipe.?
@@ -145,6 +143,8 @@ _exec_async :: proc(
     process: Process,
     err: Error,
 ) {
+    // NOTE: Any of these pipes could be equal to a pipe from `opts` if `opts`'s pipe is initialised.
+    // Thus, this procedure or the waiting procedure should not close the pipe from `opts`.
     stdout_pipe, stderr_pipe, stdin_pipe: _Pipe
     dev_null: posix.FD = -1
 
@@ -154,10 +154,22 @@ _exec_async :: proc(
     case .Silent:
         open_dev_null(&dev_null)
     case .Capture:
-        pipe_init(&stdout_pipe) or_return
-        pipe_init(&stderr_pipe) or_return
+        if opts.stdout_pipe == nil {
+            pipe_init(&stdout_pipe) or_return
+        } else {
+            stdout_pipe = opts.stdout_pipe.?
+        }
+        if opts.stderr_pipe == nil {
+            pipe_init(&stderr_pipe) or_return
+        } else {
+            stderr_pipe = opts.stderr_pipe.?
+        }
     case .Capture_Combine:
-        pipe_init(&stdout_pipe) or_return
+        if opts.stdout_pipe == nil {
+            pipe_init(&stdout_pipe) or_return
+        } else {
+            stdout_pipe = opts.stdout_pipe.?
+        }
     }
 
     switch opts.input {
@@ -166,7 +178,11 @@ _exec_async :: proc(
     case .Nothing:
         open_dev_null(&dev_null)
     case .Pipe:
-        pipe_init(&stdin_pipe) or_return
+        if opts.stdin_pipe == nil {
+            pipe_init(&stdin_pipe) or_return
+        } else {
+            stdin_pipe = opts.stdin_pipe.?
+        }
     }
 
     runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
@@ -274,14 +290,14 @@ _exec_async :: proc(
         process.stdout_pipe = nil
         process.stderr_pipe = nil
     case .Capture:
-        process.stdout_pipe = stdout_pipe
-        process.stderr_pipe = stderr_pipe
+        process.stdout_pipe = stdout_pipe if opts.stdout_pipe == nil else nil
+        process.stderr_pipe = stderr_pipe if opts.stderr_pipe == nil else nil
     case .Capture_Combine:
-        process.stdout_pipe = stdout_pipe
+        process.stdout_pipe = stdout_pipe if opts.stdout_pipe == nil else nil
         process.stderr_pipe = nil
     }
     if opts.input == .Pipe {
-        process.stdin_pipe = stdin_pipe
+        process.stdin_pipe = stdin_pipe if opts.stdin_pipe == nil else nil
     }
     process.opts = opts
     process.handle = child_pid
@@ -348,6 +364,12 @@ pipe_init :: proc(self: ^Pipe) -> (err: Error) {
         return Internal_Error.Pipe_Init_Failed
     }
     return nil
+}
+
+@(require_results)
+_pipe_make :: proc() -> (self: Pipe, err: Error) {
+    pipe_init(&self) or_return
+    return self, nil
 }
 
 @(require_results)

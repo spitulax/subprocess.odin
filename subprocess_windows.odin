@@ -28,8 +28,6 @@ _process_wait :: proc(self: ^Process, alloc: Alloc, loc: Loc) -> (result: Result
         result_destroy(&result, alloc)
     }
 
-    process_wait_assert(self)
-
     stdout_pipe, stdout_pipe_ok := &self.stdout_pipe.?
     stderr_pipe, stderr_pipe_ok := &self.stderr_pipe.?
     stdin_pipe, stdin_pipe_ok := &self.stdin_pipe.?
@@ -112,6 +110,8 @@ _exec_async :: proc(
 
     start_info: win.STARTUPINFOW
     start_info.cb = size_of(win.STARTUPINFOW)
+    // NOTE: Any of these pipes could be equal to a pipe from `opts` if `opts`'s pipe is initialised.
+    // Thus, this procedure or the waiting procedure should not close the pipe from `opts`.
     stdout_pipe, stderr_pipe, stdin_pipe: _Pipe
     dev_null: win.HANDLE = win.INVALID_HANDLE_VALUE
 
@@ -124,12 +124,24 @@ _exec_async :: proc(
         start_info.hStdOutput = dev_null
         start_info.hStdError = dev_null
     case .Capture:
-        pipe_init(&stdout_pipe, &sec_attrs) or_return
-        pipe_init(&stderr_pipe, &sec_attrs) or_return
+        if opts.stdout_pipe == nil {
+            pipe_init(&stdout_pipe, &sec_attrs) or_return
+        } else {
+            stdout_pipe = opts.stdout_pipe.?
+        }
+        if opts.stderr_pipe == nil {
+            pipe_init(&stderr_pipe, &sec_attrs) or_return
+        } else {
+            stderr_pipe = opts.stderr_pipe.?
+        }
         start_info.hStdOutput = stdout_pipe.write
         start_info.hStdError = stderr_pipe.write
     case .Capture_Combine:
-        pipe_init(&stdout_pipe, &sec_attrs) or_return
+        if opts.stdout_pipe == nil {
+            pipe_init(&stdout_pipe, &sec_attrs) or_return
+        } else {
+            stdout_pipe = opts.stdout_pipe.?
+        }
         start_info.hStdOutput = stdout_pipe.write
         start_info.hStdError = stdout_pipe.write
     }
@@ -141,7 +153,11 @@ _exec_async :: proc(
         open_dev_null(&dev_null, &sec_attrs)
         start_info.hStdInput = dev_null
     case .Pipe:
-        pipe_init(&stdin_pipe, &sec_attrs) or_return
+        if opts.stdin_pipe == nil {
+            pipe_init(&stdin_pipe, &sec_attrs) or_return
+        } else {
+            stdin_pipe = opts.stdin_pipe.?
+        }
         start_info.hStdInput = stdin_pipe.read
     }
 
@@ -236,15 +252,15 @@ _exec_async :: proc(
             process.stdout_pipe = nil
             process.stderr_pipe = nil
         case .Capture:
-            process.stdout_pipe = stdout_pipe
-            process.stderr_pipe = stderr_pipe
+            process.stdout_pipe = stdout_pipe if opts.stdout_pipe == nil else nil
+            process.stderr_pipe = stderr_pipe if opts.stderr_pipe == nil else nil
         case .Capture_Combine:
-            process.stdout_pipe = stdout_pipe
+            process.stdout_pipe = stdout_pipe if opts.stdout_pipe == nil else nil
             process.stderr_pipe = nil
         }
 
         if opts.input == .Pipe {
-            process.stdin_pipe = stdin_pipe
+            process.stdin_pipe = stdin_pipe if opts.stdin_pipe == nil else nil
         }
 
         process.opts = opts
@@ -254,13 +270,21 @@ _exec_async :: proc(
         case .Share, .Silent:
             break
         case .Capture:
-            pipe_close_read(&stdout_pipe) or_return
-            pipe_close_read(&stderr_pipe) or_return
+            if opts.stdout_pipe == nil {
+                pipe_close_read(&stdout_pipe) or_return
+            }
+            if opts.stderr_pipe == nil {
+                pipe_close_read(&stderr_pipe) or_return
+            }
         case .Capture_Combine:
-            pipe_close_read(&stdout_pipe) or_return
+            if opts.stdout_pipe == nil {
+                pipe_close_read(&stdout_pipe) or_return
+            }
         }
         if opts.input == .Pipe {
-            pipe_close_write(&stdin_pipe) or_return
+            if opts.stdin_pipe == nil {
+                pipe_close_write(&stdin_pipe) or_return
+            }
         }
         err = General_Error.Spawn_Failed
     }
@@ -322,6 +346,18 @@ pipe_init :: proc(self: ^Pipe, sec_attrs: ^win.SECURITY_ATTRIBUTES) -> (err: Err
         return Internal_Error.Pipe_Init_Failed
     }
     return nil
+}
+
+@(require_results)
+_pipe_make :: proc() -> (self: Pipe, err: Error) {
+    // NOTE: The SECURITY_ATTRIBUTES is hardcoded to this
+    sec_attrs := win.SECURITY_ATTRIBUTES {
+        nLength              = size_of(win.SECURITY_ATTRIBUTES),
+        lpSecurityDescriptor = nil,
+        bInheritHandle       = true,
+    }
+    pipe_init(&self, &sec_attrs) or_return
+    return self, nil
 }
 
 @(require_results)
