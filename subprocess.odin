@@ -178,6 +178,13 @@ Process :: struct {
     alive:          bool,
     // The options passed when executing.
     opts:           Exec_Opts,
+
+    /*
+    If you specify a pipe through `opts` when creating the `Process`,
+    the corresponding pipe will be nil here, but it's stored in the `opts` field.
+    This ensures that `process_wait` will not close pipes not owned by `Process`.
+    */
+
     // The pipe to process' stdout.
     // nil if `Output_Option` is `Share` or `Silent`.
     stdout_pipe:    Maybe(Pipe),
@@ -368,13 +375,15 @@ Exec_Opts :: struct {
     cwd:               string,
 
     /*
-    ------------------------------
     The pipes that will be used redirect output or input.
     The process will initialise the pipes automatically if they are not specified here.
     If any of these is specified, the process will not initialise its own pipe.
     The pipe is initialised and must be freed manually.
     Only used when a specific option is set.
+    When you specify a pipe here, the created `Process` object will not store the pipe in
+    its direct field, but inside its `opts` field as described there (See `Process`).
     */
+
     // Used if `output` is either `Capture` or `Capture_Combine`.
     stdout_pipe:       Maybe(Pipe),
     // Used if `output` is `Capture`.

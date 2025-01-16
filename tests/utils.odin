@@ -129,9 +129,9 @@ expect_process :: proc(
         loc = loc,
     )
 
-    stdout_pipe_ok := process.stdout_pipe != nil
-    stderr_pipe_ok := process.stderr_pipe != nil
-    stdin_pipe_ok := process.stdin_pipe != nil
+    stdout_pipe_ok := process.stdout_pipe != nil || process.opts.stdout_pipe != nil
+    stderr_pipe_ok := process.stderr_pipe != nil || process.opts.stderr_pipe != nil
+    stdin_pipe_ok := process.stdin_pipe != nil || process.opts.stdin_pipe != nil
     MSG :: "the state of `Process` does not match its `opts`"
     switch process.opts.output {
     case .Share, .Silent:

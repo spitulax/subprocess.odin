@@ -19,6 +19,7 @@ custom_pipes :: proc(t: ^testing.T) {
                 lib.Exec_Opts{output = .Capture_Combine, stdout_pipe = stdout},
             ),
         )
+        expect_process(t, process)
         // NOTE: Deliberate testing. Not destroying the result should be fine because `Capture_Combine`
         // would only allocate buffer for stdout output, but we use our own pipe for stdout so the only
         // thing that would get allocated in fact should not be allocated.
@@ -41,6 +42,7 @@ custom_pipes :: proc(t: ^testing.T) {
                 lib.Exec_Opts{output = .Capture, stdout_pipe = stdout, stderr_pipe = stderr},
             ),
         )
+        expect_process(t, process)
         result := lib.unwrap(lib.process_wait(&process))
         expect_result_bytes(t, result, {}, {}, nil)
         stdout_out := lib.unwrap(lib.pipe_read_all(&stdout))
@@ -61,6 +63,7 @@ custom_pipes :: proc(t: ^testing.T) {
                 lib.Exec_Opts{output = .Capture, input = .Pipe, stdin_pipe = stdin},
             ),
         )
+        expect_process(t, process)
         lib.unwrap(lib.pipe_write_string(stdin, "Hello, World!\n", false))
         result := lib.unwrap(lib.process_wait(&process))
         defer lib.result_destroy(&result)
