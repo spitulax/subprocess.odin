@@ -17,6 +17,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - `pipe_write_buf` and `pipe_write_string` now return uint. (Breaking)
+- Closing a pipe from `Process` early breaks `process_wait*`.
 
 ## [0.1.0] - 2024-12-23
 

@@ -383,8 +383,9 @@ pipe_close_write :: proc(self: ^Pipe) -> (err: Error) {
 @(require_results)
 pipe_ensure_closed :: proc(self: ^Pipe) -> (err: Error) {
     pipe_close_read(self) or_return
+    self.read = win.INVALID_HANDLE_VALUE
     pipe_close_write(self) or_return
-    self^ = {}
+    self.write = win.INVALID_HANDLE_VALUE
     return nil
 }
 

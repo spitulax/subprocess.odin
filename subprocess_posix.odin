@@ -395,8 +395,9 @@ pipe_close_write :: proc(self: ^Pipe) -> (err: Error) {
 @(require_results)
 pipe_ensure_closed :: proc(self: ^Pipe) -> (err: Error) {
     pipe_close_read(self) or_return
+    self.struc.read = -1
     pipe_close_write(self) or_return
-    self^ = {}
+    self.struc.write = -1
     return nil
 }
 
