@@ -932,6 +932,11 @@ command_run_async :: proc(
 // Stores a pipe. The implementation depends on the target.
 Pipe :: _Pipe
 
+Pipe_End :: enum {
+    Read,
+    Write,
+}
+
 // Initialise a `Pipe`.
 // Close with `pipe_destroy`.
 @(require_results)
@@ -946,9 +951,15 @@ pipe_init :: proc(self: ^Pipe) -> (err: Error) {
 }
 
 // Closes a `Pipe`.
-pipe_destroy :: proc(self: ^Pipe) -> (err: Error) {
+// Choose what end to close with `end`.
+pipe_destroy :: proc(self: ^Pipe, end: bit_set[Pipe_End] = {.Read, .Write}) -> (err: Error) {
     // NOTE: This is named `pipe_destroy` and not `pipe_close` for consistency
-    pipe_ensure_closed(self) or_return
+    if .Read in end {
+        pipe_close_read(self) or_return
+    }
+    if .Write in end {
+        pipe_close_write(self) or_return
+    }
     return nil
 }
 
