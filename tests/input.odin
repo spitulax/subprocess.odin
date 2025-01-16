@@ -23,7 +23,7 @@ run_nothing :: proc(t: ^testing.T, process: ^lib.Process) -> (ok: bool) {
 }
 
 @(test)
-stdin :: proc(t: ^testing.T) {
+input :: proc(t: ^testing.T) {
     cmd, cmd_ok := lib.unwrap(lib.command_make("bash"))
     if !cmd_ok {return}
     defer lib.command_destroy(&cmd)

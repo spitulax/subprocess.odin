@@ -345,6 +345,12 @@ Output_Option :: enum u8 {
     // Capture stdout and stderr combined.
     // Will just assign to `Process.stdout_pipe`.
     Capture_Combine,
+    // Capture exclusively stdout.
+    // Will just assign to `Process.stdout_pipe`.
+    Capture_Stdout,
+    // Capture exclusively stderr.
+    // But will assign to `Process.stdout_pipe` instead.
+    Capture_Stderr,
 }
 
 // Controls how the process' input will be handled.

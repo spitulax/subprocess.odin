@@ -138,7 +138,7 @@ expect_process :: proc(
         ok = testing.expect(t, !stdout_pipe_ok && !stderr_pipe_ok, MSG, loc = loc)
     case .Capture:
         ok = testing.expect(t, stdout_pipe_ok && stderr_pipe_ok, MSG, loc = loc)
-    case .Capture_Combine:
+    case .Capture_Combine, .Capture_Stdout, .Capture_Stderr:
         ok = testing.expect(t, stdout_pipe_ok && !stderr_pipe_ok, MSG, loc = loc)
     }
     switch process.opts.input {

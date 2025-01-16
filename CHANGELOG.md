@@ -13,6 +13,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `pipe_read_non_append`: Reads from a pipe to a slice.
 - `command_set`: Sets the arguments of `Command`.
 - Creating pipes manually and using them for processes. See examples.
+- Added `Capture_Stdout` and `Capture_Stderr` to `Output_Option`.
 
 ### Fixed
 

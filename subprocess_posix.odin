@@ -148,28 +148,28 @@ _exec_async :: proc(
     stdout_pipe, stderr_pipe, stdin_pipe: _Pipe
     dev_null: posix.FD = -1
 
-    switch opts.output {
-    case .Share:
-        break
-    case .Silent:
-        open_dev_null(&dev_null)
-    case .Capture:
+    #partial switch opts.output {
+    case .Capture, .Capture_Combine, .Capture_Stdout, .Capture_Stderr:
         if opts.stdout_pipe == nil {
             pipe_init(&stdout_pipe) or_return
         } else {
             stdout_pipe = opts.stdout_pipe.?
         }
+    }
+
+    switch opts.output {
+    case .Share:
+        break
+    case .Silent, .Capture_Stdout, .Capture_Stderr:
+        open_dev_null(&dev_null)
+    case .Capture:
         if opts.stderr_pipe == nil {
             pipe_init(&stderr_pipe) or_return
         } else {
             stderr_pipe = opts.stderr_pipe.?
         }
     case .Capture_Combine:
-        if opts.stdout_pipe == nil {
-            pipe_init(&stdout_pipe) or_return
-        } else {
-            stdout_pipe = opts.stdout_pipe.?
-        }
+        break
     }
 
     switch opts.input {
@@ -255,6 +255,20 @@ _exec_async :: proc(
             unwrap(fd_redirect(posix.STDOUT_FILENO, posix.STDERR_FILENO))
 
             unwrap(pipe_close_write(&stdout_pipe))
+        case .Capture_Stdout:
+            unwrap(pipe_close_read(&stdout_pipe))
+
+            unwrap(pipe_redirect_write(&stdout_pipe, posix.STDOUT_FILENO))
+            unwrap(fd_redirect(dev_null, posix.STDERR_FILENO))
+
+            unwrap(pipe_close_write(&stdout_pipe))
+        case .Capture_Stderr:
+            unwrap(pipe_close_read(&stdout_pipe))
+
+            unwrap(pipe_redirect_write(&stdout_pipe, posix.STDERR_FILENO))
+            unwrap(fd_redirect(dev_null, posix.STDOUT_FILENO))
+
+            unwrap(pipe_close_write(&stdout_pipe))
         }
 
         switch opts.input {
@@ -292,12 +306,15 @@ _exec_async :: proc(
     case .Capture:
         process.stdout_pipe = stdout_pipe if opts.stdout_pipe == nil else nil
         process.stderr_pipe = stderr_pipe if opts.stderr_pipe == nil else nil
-    case .Capture_Combine:
+    case .Capture_Combine, .Capture_Stdout, .Capture_Stderr:
         process.stdout_pipe = stdout_pipe if opts.stdout_pipe == nil else nil
         process.stderr_pipe = nil
     }
-    if opts.input == .Pipe {
+    switch opts.input {
+    case .Pipe:
         process.stdin_pipe = stdin_pipe if opts.stdin_pipe == nil else nil
+    case .Share, .Nothing:
+        break
     }
     process.opts = opts
     process.handle = child_pid

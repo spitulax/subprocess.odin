@@ -115,6 +115,15 @@ _exec_async :: proc(
     stdout_pipe, stderr_pipe, stdin_pipe: _Pipe
     dev_null: win.HANDLE = win.INVALID_HANDLE_VALUE
 
+    #partial switch opts.output {
+    case .Capture, .Capture_Combine, .Capture_Stdout, .Capture_Stderr:
+        if opts.stdout_pipe == nil {
+            pipe_init(&stdout_pipe, &sec_attrs) or_return
+        } else {
+            stdout_pipe = opts.stdout_pipe.?
+        }
+    }
+
     switch opts.output {
     case .Share:
         start_info.hStdOutput = win.GetStdHandle(win.STD_OUTPUT_HANDLE)
@@ -124,11 +133,6 @@ _exec_async :: proc(
         start_info.hStdOutput = dev_null
         start_info.hStdError = dev_null
     case .Capture:
-        if opts.stdout_pipe == nil {
-            pipe_init(&stdout_pipe, &sec_attrs) or_return
-        } else {
-            stdout_pipe = opts.stdout_pipe.?
-        }
         if opts.stderr_pipe == nil {
             pipe_init(&stderr_pipe, &sec_attrs) or_return
         } else {
@@ -137,12 +141,15 @@ _exec_async :: proc(
         start_info.hStdOutput = stdout_pipe.write
         start_info.hStdError = stderr_pipe.write
     case .Capture_Combine:
-        if opts.stdout_pipe == nil {
-            pipe_init(&stdout_pipe, &sec_attrs) or_return
-        } else {
-            stdout_pipe = opts.stdout_pipe.?
-        }
         start_info.hStdOutput = stdout_pipe.write
+        start_info.hStdError = stdout_pipe.write
+    case .Capture_Stdout:
+        open_dev_null(&dev_null, &sec_attrs)
+        start_info.hStdOutput = stdout_pipe.write
+        start_info.hStdError = dev_null
+    case .Capture_Stderr:
+        open_dev_null(&dev_null, &sec_attrs)
+        start_info.hStdOutput = dev_null
         start_info.hStdError = stdout_pipe.write
     }
 
@@ -229,13 +236,11 @@ _exec_async :: proc(
 
     close_dev_null(&dev_null)
 
-    switch opts.output {
-    case .Share, .Silent:
-        break
+    #partial switch opts.output {
     case .Capture:
         pipe_close_write(&stdout_pipe) or_return
         pipe_close_write(&stderr_pipe) or_return
-    case .Capture_Combine:
+    case .Capture_Combine, .Capture_Stdout, .Capture_Stderr:
         pipe_close_write(&stdout_pipe) or_return
     }
 
@@ -254,21 +259,22 @@ _exec_async :: proc(
         case .Capture:
             process.stdout_pipe = stdout_pipe if opts.stdout_pipe == nil else nil
             process.stderr_pipe = stderr_pipe if opts.stderr_pipe == nil else nil
-        case .Capture_Combine:
+        case .Capture_Combine, .Capture_Stdout, .Capture_Stderr:
             process.stdout_pipe = stdout_pipe if opts.stdout_pipe == nil else nil
             process.stderr_pipe = nil
         }
 
-        if opts.input == .Pipe {
+        switch opts.input {
+        case .Pipe:
             process.stdin_pipe = stdin_pipe if opts.stdin_pipe == nil else nil
+        case .Share, .Nothing:
+            break
         }
 
         process.opts = opts
         process.handle = {proc_info.hProcess, proc_info.hThread}
     } else {
-        switch opts.output {
-        case .Share, .Silent:
-            break
+        #partial switch opts.output {
         case .Capture:
             if opts.stdout_pipe == nil {
                 pipe_close_read(&stdout_pipe) or_return
@@ -276,16 +282,18 @@ _exec_async :: proc(
             if opts.stderr_pipe == nil {
                 pipe_close_read(&stderr_pipe) or_return
             }
-        case .Capture_Combine:
+        case .Capture_Combine, .Capture_Stdout, .Capture_Stderr:
             if opts.stdout_pipe == nil {
                 pipe_close_read(&stdout_pipe) or_return
             }
         }
+
         if opts.input == .Pipe {
             if opts.stdin_pipe == nil {
                 pipe_close_write(&stdin_pipe) or_return
             }
         }
+
         err = General_Error.Spawn_Failed
     }
 

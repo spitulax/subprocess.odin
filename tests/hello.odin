@@ -1,5 +1,8 @@
 package tests
 
+// I really don't know what is this for since the cases are already covered by `output` anyway
+// But I don't want to remove it
+
 import lib ".."
 import "core:testing"
 
