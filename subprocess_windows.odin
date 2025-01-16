@@ -339,6 +339,7 @@ _Pipe :: struct {
 }
 
 @(require_results)
+@(private = "file")
 pipe_init :: proc(self: ^Pipe, sec_attrs: ^win.SECURITY_ATTRIBUTES) -> (err: Error) {
     // NOTE: SetHandleInformation to read end for OUT pipe or to write end for IN pipe
     if !win.CreatePipe(&self.read, &self.write, sec_attrs, 0) &&
@@ -348,16 +349,15 @@ pipe_init :: proc(self: ^Pipe, sec_attrs: ^win.SECURITY_ATTRIBUTES) -> (err: Err
     return nil
 }
 
-@(require_results)
-_pipe_make :: proc() -> (self: Pipe, err: Error) {
+_pipe_init :: proc(self: ^Pipe) -> (err: Error) {
     // NOTE: The SECURITY_ATTRIBUTES is hardcoded to this
     sec_attrs := win.SECURITY_ATTRIBUTES {
         nLength              = size_of(win.SECURITY_ATTRIBUTES),
         lpSecurityDescriptor = nil,
         bInheritHandle       = true,
     }
-    pipe_init(&self, &sec_attrs) or_return
-    return self, nil
+    pipe_init(self, &sec_attrs) or_return
+    return nil
 }
 
 @(require_results)

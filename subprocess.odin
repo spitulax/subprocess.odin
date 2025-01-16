@@ -927,7 +927,13 @@ Pipe :: _Pipe
 // Close with `pipe_destroy`.
 @(require_results)
 pipe_make :: proc() -> (self: Pipe, err: Error) {
-    return _pipe_make()
+    _pipe_init(&self) or_return
+    return self, nil
+}
+
+pipe_init :: proc(self: ^Pipe) -> (err: Error) {
+    _pipe_init(self) or_return
+    return nil
 }
 
 // Closes a `Pipe`.

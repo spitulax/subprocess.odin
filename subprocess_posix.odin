@@ -359,6 +359,7 @@ Pipe_Separate :: struct #align (size_of(posix.FD)) {
 }
 
 @(require_results)
+@(private = "file")
 pipe_init :: proc(self: ^Pipe) -> (err: Error) {
     if posix.pipe(&self.array) == .FAIL {
         return Internal_Error.Pipe_Init_Failed
@@ -366,10 +367,9 @@ pipe_init :: proc(self: ^Pipe) -> (err: Error) {
     return nil
 }
 
-@(require_results)
-_pipe_make :: proc() -> (self: Pipe, err: Error) {
-    pipe_init(&self) or_return
-    return self, nil
+_pipe_init :: proc(self: ^Pipe) -> (err: Error) {
+    pipe_init(self) or_return
+    return nil
 }
 
 @(require_results)
