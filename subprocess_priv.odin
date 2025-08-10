@@ -2,7 +2,7 @@
 package subprocess
 
 import "base:runtime"
-import "core:encoding/ansi"
+import "core:terminal/ansi"
 import "core:fmt"
 import "core:io"
 import "core:log"
